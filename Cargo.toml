@@ -1,0 +1,13 @@
+[package]
+name = "kvmi"
+version = "0.1.0"
+authors = ["Mathieu Tarral <mathieu.tarral@protonmail.com>"]
+edition = "2018"
+repository = "https://github.com/Wenzel/kvmi"
+readme = "README.md"
+keywords = ["KVM", "KVMi"]
+description = "Rust bindings for KVMi"
+license = "GPL-3.0-only"
+
+[dependencies]
+kvmi-sys = { git = "https://github.com/Wenzel/kvmi-sys.git" }
