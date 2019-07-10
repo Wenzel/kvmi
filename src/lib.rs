@@ -77,10 +77,18 @@ impl KVMi {
     }
 
     fn close(&mut self) {
-        unsafe {
-            kvmi_sys::kvmi_uninit(self.ctx);
-        };
-        self.ctx = null_mut();
+        if self.ctx != null_mut() {
+            unsafe {
+                kvmi_sys::kvmi_uninit(self.ctx);
+            };
+            self.ctx = null_mut();
+        }
+        if self.dom != null_mut() {
+            unsafe {
+                kvmi_sys::kvmi_domain_close(self.dom, true);
+            };
+            self.dom = null_mut();
+        }
     }
 }
 
