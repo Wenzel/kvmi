@@ -9,19 +9,32 @@ use std::sync::{Mutex, Condvar};
 #[derive(Debug)]
 pub struct KVMi {
     ctx: *mut c_void,
-    connect_condvar: Condvar,
+    dom: *mut c_void,
+}
+
+#[derive(Debug)]
+struct KVMiCon {
+    dom: *mut c_void,
+    guard: Mutex<bool>,
+    condvar: Condvar,
 }
 
 extern "C" fn new_guest_cb(dom: *mut c_void,
                            uuid: *mut [c_uchar; 16usize],
-                           ctx: *mut c_void) -> c_int {
+                           cb_ctx: *mut c_void) -> c_int {
     println!("new guest cb !");
+    let kvmi_con = unsafe { &mut *(cb_ctx as *mut KVMiCon) };
+    let mut started = kvmi_con.guard.lock().unwrap();
+    kvmi_con.dom = dom;
+    *started = true;
+    // wake up waiters
+    kvmi_con.condvar.notify_one();
     0
 }
 
 extern "C" fn handshake_cb(arg1: *const kvmi_qemu2introspector,
                            arg2: *mut kvmi_introspector2qemu,
-                           ctx: *mut c_void) -> c_int {
+                           cb_ctx: *mut c_void) -> c_int {
     println!("handshake cb !");
     0
 }
@@ -39,20 +52,27 @@ impl KVMi {
                                            *mut c_void) -> c_int);
         let mut kvmi = KVMi {
             ctx: null_mut(),
-            connect_condvar: Condvar::new(),
+            dom: null_mut(),
         };
-        let cb_ctx: *mut c_void = &kvmi;
+        let mut kvmi_con = KVMiCon {
+            dom: null_mut(),
+            guard: Mutex::new(false),
+            condvar: Condvar::new(),
+        };
+        let cb_ctx: *mut c_void = &mut kvmi_con as *mut _ as *mut c_void;
         // kvmi_dom = NULL
-        let guard = Mutex::new(false);
-        let lock = guard.lock().unwrap();
-        let res: *mut c_void = unsafe {
+        let lock = kvmi_con.guard.lock().unwrap();
+        kvmi.ctx = unsafe {
             kvmi_sys::kvmi_init_unix_socket(socket_path.as_ptr(), accept_db, hsk_cb, cb_ctx)
         };
-        if res != null_mut() {
+        if kvmi.ctx != null_mut() {
             // wait for connexion
             println!("Waiting for connexion..");
-            kvmi.connect_condvar.wait(lock).unwrap();
+            kvmi_con.condvar.wait(lock).unwrap();
         }
+        // TODO: error handling
+        kvmi.dom = kvmi_con.dom;
+        println!("Connected {:?}", kvmi);
         kvmi
     }
 
