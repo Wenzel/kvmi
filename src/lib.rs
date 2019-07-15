@@ -62,7 +62,7 @@ impl KVMi {
             guard: Mutex::new(false),
             condvar: Condvar::new(),
         };
-        let cb_ctx: *mut c_void = &mut kvmi_con as *mut _ as *mut c_void;
+        let cb_ctx: *mut c_void = &mut kvmi_con as *mut _ as *mut _;
         // kvmi_dom = NULL
         let lock = kvmi_con.guard.lock().unwrap();
         kvmi.ctx = unsafe {
