@@ -2,8 +2,9 @@ use kvmi_sys;
 use kvmi_sys::{kvmi_qemu2introspector, kvmi_introspector2qemu};
 use std::ffi::{CString};
 use std::ptr::{null_mut};
-use std::os::raw::{c_void, c_uchar, c_int};
+use std::os::raw::{c_void, c_uchar, c_int, c_uint};
 use std::sync::{Mutex, Condvar};
+use std::io::Error;
 
 
 #[derive(Debug)]
@@ -77,6 +78,22 @@ impl KVMi {
         kvmi.dom = kvmi_con.dom;
         println!("Connected {:?}", kvmi);
         kvmi
+    }
+
+    fn pause(&self) -> Result<u32,Error> {
+        let mut expected_count: c_uint = 0;
+        let mut expected_count_ptr = &mut expected_count;
+        let res = unsafe {
+            kvmi_sys::kvmi_pause_all_vcpus(self.dom, expected_count_ptr)
+        };
+        if res > 0 {
+            return Err(Error::last_os_error());
+        };
+        Ok(expected_count)
+    }
+
+    fn wait_event(&self) {
+
     }
 
     fn close(&mut self) {
