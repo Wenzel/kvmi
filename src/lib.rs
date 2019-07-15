@@ -27,7 +27,7 @@ unsafe extern "C" fn new_guest_cb(dom: *mut c_void,
         panic!("Unexpected null context");
     }
     let kvmi_con = unsafe { &mut *(cb_ctx as *mut KVMiCon) };
-    let mut started = kvmi_con.guard.lock().unwrap();
+    let mut started = kvmi_con.guard.lock().expect("Failed to acquire connexion mutex");
     kvmi_con.dom = dom;
     *started = true;
     // wake up waiters
@@ -43,8 +43,8 @@ extern "C" fn handshake_cb(arg1: *const kvmi_qemu2introspector,
 }
 
 impl KVMi {
-    pub fn new(socket_path: String) -> KVMi {
-        let socket_path = CString::new(socket_path.into_bytes()).unwrap();
+    pub fn new(socket_path: &str) -> KVMi {
+        let socket_path = CString::new(socket_path.as_bytes()).unwrap();
         let accept_db = Some(new_guest_cb as
                              unsafe extern "C" fn(*mut c_void,
                                               *mut [c_uchar; 16usize],
@@ -64,7 +64,7 @@ impl KVMi {
         };
         let cb_ctx: *mut c_void = &mut kvmi_con as *mut _ as *mut _;
         // kvmi_dom = NULL
-        let lock = kvmi_con.guard.lock().unwrap();
+        let lock = kvmi_con.guard.lock().expect("Failed to acquire connexion mutex");
         kvmi.ctx = unsafe {
             kvmi_sys::kvmi_init_unix_socket(socket_path.as_ptr(), accept_db, hsk_cb, cb_ctx)
         };
