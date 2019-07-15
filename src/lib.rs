@@ -43,11 +43,11 @@ impl KVMi {
     pub fn new(socket_path: String) -> KVMi {
         let socket_path = CString::new(socket_path.into_bytes()).unwrap();
         let accept_db = Some(new_guest_cb as
-                             unsafe extern fn(*mut c_void,
+                             unsafe extern "C" fn(*mut c_void,
                                               *mut [c_uchar; 16usize],
                                               *mut c_void) -> c_int);
         let hsk_cb = Some(handshake_cb as
-                          unsafe extern fn(*const kvmi_qemu2introspector,
+                          unsafe extern "C" fn(*const kvmi_qemu2introspector,
                                            *mut kvmi_introspector2qemu,
                                            *mut c_void) -> c_int);
         let mut kvmi = KVMi {
