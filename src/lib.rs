@@ -23,6 +23,9 @@ unsafe extern "C" fn new_guest_cb(dom: *mut c_void,
                            uuid: *mut [c_uchar; 16usize],
                            cb_ctx: *mut c_void) -> c_int {
     println!("new guest cb !");
+    if cb_ctx.is_null() {
+        panic!("Unexpected null context");
+    }
     let kvmi_con = unsafe { &mut *(cb_ctx as *mut KVMiCon) };
     let mut started = kvmi_con.guard.lock().unwrap();
     kvmi_con.dom = dom;
