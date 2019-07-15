@@ -19,7 +19,7 @@ struct KVMiCon {
     condvar: Condvar,
 }
 
-extern "C" fn new_guest_cb(dom: *mut c_void,
+unsafe extern "C" fn new_guest_cb(dom: *mut c_void,
                            uuid: *mut [c_uchar; 16usize],
                            cb_ctx: *mut c_void) -> c_int {
     println!("new guest cb !");
@@ -65,7 +65,7 @@ impl KVMi {
         kvmi.ctx = unsafe {
             kvmi_sys::kvmi_init_unix_socket(socket_path.as_ptr(), accept_db, hsk_cb, cb_ctx)
         };
-        if kvmi.ctx != null_mut() {
+        if !kvmi.ctx.is_null() {
             // wait for connexion
             println!("Waiting for connexion..");
             kvmi_con.condvar.wait(lock).unwrap();
