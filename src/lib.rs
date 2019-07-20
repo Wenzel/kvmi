@@ -87,13 +87,19 @@ impl KVMi {
             kvmi_sys::kvmi_pause_all_vcpus(self.dom, expected_count_ptr)
         };
         if res > 0 {
-            return Err(Error::last_os_error());
-        };
+            return Err(Error::last_os_error())
+        }
         Ok(expected_count)
     }
 
-    fn wait_event(&self) {
-
+    fn wait_event(&self, ms: i32) -> Result<(),Error>{
+        let res = unsafe {
+            kvmi_sys::kvmi_wait_event(self.dom, ms)
+        };
+        if res > 0 {
+            return Err(Error::last_os_error())
+        }
+        Ok(())
     }
 
     fn close(&mut self) {
