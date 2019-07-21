@@ -1,12 +1,14 @@
 use enum_primitive_derive::Primitive;
-use num_traits::FromPrimitive;
+use num_traits::{FromPrimitive, ToPrimitive};
 use kvmi_sys;
-use kvmi_sys::{kvmi_qemu2introspector, kvmi_introspector2qemu, kvmi_dom_event};
+use kvmi_sys::{kvmi_qemu2introspector, kvmi_introspector2qemu, kvmi_dom_event,kvmi_event_reply,
+               KVMI_EVENT_ACTION_CONTINUE};
 use std::ffi::CString;
 use std::ptr::null_mut;
 use std::os::raw::{c_void, c_uchar, c_int, c_uint};
 use std::sync::{Mutex, Condvar};
 use std::io::Error;
+use std::mem;
 
 
 #[derive(Debug)]
@@ -40,6 +42,7 @@ pub enum KVMiEventType {
 #[derive(Debug)]
 pub struct KVMiEvent {
     pub kind: KVMiEventType,
+    pub seq: u32,
 }
 
 unsafe extern "C" fn new_guest_cb(dom: *mut c_void,
@@ -137,9 +140,25 @@ impl KVMi {
         let kvmi_event = unsafe {
             KVMiEvent {
                 kind: KVMiEventType::from_u32((*ev_ptr).event.common.event).unwrap(),
+                seq: (*ev_ptr).seq,
             }
         };
         Ok(kvmi_event)
+    }
+
+    pub fn reply_continue(&self, event: &KVMiEvent) -> Result<(),Error>{
+        let size = mem::size_of::<kvmi_event_reply>();
+        let res = unsafe {
+            let mut rpl = mem::MaybeUninit::<kvmi_event_reply>::zeroed().assume_init();
+            rpl.action = KVMI_EVENT_ACTION_CONTINUE;
+            rpl.event = event.kind.to_u32().unwrap();
+            let rpl_ptr = &rpl as *const kvmi_event_reply as *const c_void;
+            kvmi_sys::kvmi_reply_event(self.dom, event.seq, rpl_ptr, size as u32)
+        };
+        if res > 0 {
+            return Err(Error::last_os_error())
+        }
+        Ok(())
     }
 
     fn close(&mut self) {
