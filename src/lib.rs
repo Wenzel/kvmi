@@ -125,9 +125,11 @@ impl KVMi {
     }
 
     fn pop_event(&self) -> Result<KVMiEvent,Error> {
-        let mut ev = mem::MaybeUninit::<kvmi_sys::kvmi_dom_event>::zeroed();
-        let mut ev_ptr = ev.as_mut_ptr();
-        let mut ev_ptr_ptr = &mut ev_ptr;
+        let mut ev = unsafe {
+            mem::MaybeUninit::<kvmi_sys::kvmi_dom_event>::zeroed().assume_init()
+        };
+        let mut ev_ptr = &mut ev as *mut _;
+        let mut ev_ptr_ptr = &mut ev_ptr as *mut _;
         let res = unsafe {
             kvmi_sys::kvmi_pop_event(self.dom, ev_ptr_ptr)
         };
