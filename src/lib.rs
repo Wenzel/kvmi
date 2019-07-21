@@ -1,13 +1,12 @@
 use enum_primitive_derive::Primitive;
 use num_traits::FromPrimitive;
 use kvmi_sys;
-use kvmi_sys::{kvmi_qemu2introspector, kvmi_introspector2qemu};
-use std::ffi::{CString};
-use std::ptr::{null_mut};
+use kvmi_sys::{kvmi_qemu2introspector, kvmi_introspector2qemu, kvmi_dom_event};
+use std::ffi::CString;
+use std::ptr::null_mut;
 use std::os::raw::{c_void, c_uchar, c_int, c_uint};
 use std::sync::{Mutex, Condvar};
 use std::io::Error;
-use std::mem;
 
 
 #[derive(Debug)]
@@ -23,7 +22,7 @@ struct KVMiCon {
     condvar: Condvar,
 }
 
-#[derive(Primitive)]
+#[derive(Primitive,Debug)]
 pub enum KVMiEventType {
     Unhook = kvmi_sys::KVMI_EVENT_UNHOOK as isize,
     Cr = kvmi_sys::KVMI_EVENT_CR as isize,
@@ -38,8 +37,9 @@ pub enum KVMiEventType {
     PauseVCPU = kvmi_sys::KVMI_EVENT_PAUSE_VCPU as isize,
 }
 
+#[derive(Debug)]
 pub struct KVMiEvent {
-    kind: KVMiEventType,
+    pub kind: KVMiEventType,
 }
 
 unsafe extern "C" fn new_guest_cb(dom: *mut c_void,
@@ -125,10 +125,8 @@ impl KVMi {
     }
 
     pub fn pop_event(&self) -> Result<KVMiEvent,Error> {
-        let mut ev = unsafe {
-            mem::MaybeUninit::<kvmi_sys::kvmi_dom_event>::zeroed().assume_init()
-        };
-        let mut ev_ptr = &mut ev as *mut _;
+        // kvmi_pop_event will allocate the struct and set this pointer
+        let mut ev_ptr: *mut kvmi_dom_event = null_mut();
         let mut ev_ptr_ptr = &mut ev_ptr as *mut _;
         let res = unsafe {
             kvmi_sys::kvmi_pop_event(self.dom, ev_ptr_ptr)
@@ -136,8 +134,10 @@ impl KVMi {
         if res > 0 {
             return Err(Error::last_os_error())
         }
-        let kvmi_event = KVMiEvent {
-            kind: KVMiEventType::from_u32(ev.event.common.event).unwrap(),
+        let kvmi_event = unsafe {
+            KVMiEvent {
+                kind: KVMiEventType::from_u32((*ev_ptr).event.common.event).unwrap(),
+            }
         };
         Ok(kvmi_event)
     }
