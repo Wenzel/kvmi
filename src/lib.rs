@@ -102,7 +102,7 @@ impl KVMi {
         kvmi
     }
 
-    fn pause(&self) -> Result<u32,Error> {
+    pub fn pause(&self) -> Result<u32,Error> {
         let mut expected_count: c_uint = 0;
         let mut expected_count_ptr = &mut expected_count;
         let res = unsafe {
@@ -114,7 +114,7 @@ impl KVMi {
         Ok(expected_count)
     }
 
-    fn wait_event(&self, ms: i32) -> Result<(),Error> {
+    pub fn wait_event(&self, ms: i32) -> Result<(),Error> {
         let res = unsafe {
             kvmi_sys::kvmi_wait_event(self.dom, ms)
         };
@@ -124,7 +124,7 @@ impl KVMi {
         Ok(())
     }
 
-    fn pop_event(&self) -> Result<KVMiEvent,Error> {
+    pub fn pop_event(&self) -> Result<KVMiEvent,Error> {
         let mut ev = unsafe {
             mem::MaybeUninit::<kvmi_sys::kvmi_dom_event>::zeroed().assume_init()
         };
