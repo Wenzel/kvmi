@@ -43,13 +43,13 @@ pub struct KVMiEvent {
 }
 
 unsafe extern "C" fn new_guest_cb(dom: *mut c_void,
-                           uuid: *mut [c_uchar; 16usize],
+                           _uuid: *mut [c_uchar; 16usize],
                            cb_ctx: *mut c_void) -> c_int {
     println!("new guest cb !");
     if cb_ctx.is_null() {
         panic!("Unexpected null context");
     }
-    let kvmi_con = unsafe { &mut *(cb_ctx as *mut KVMiCon) };
+    let kvmi_con = &mut *(cb_ctx as *mut KVMiCon);
     let mut started = kvmi_con.guard.lock().expect("Failed to acquire connexion mutex");
     kvmi_con.dom = dom;
     *started = true;
@@ -58,9 +58,9 @@ unsafe extern "C" fn new_guest_cb(dom: *mut c_void,
     0
 }
 
-extern "C" fn handshake_cb(arg1: *const kvmi_qemu2introspector,
-                           arg2: *mut kvmi_introspector2qemu,
-                           cb_ctx: *mut c_void) -> c_int {
+extern "C" fn handshake_cb(_arg1: *const kvmi_qemu2introspector,
+                           _arg2: *mut kvmi_introspector2qemu,
+                           _cb_ctx: *mut c_void) -> c_int {
     println!("handshake cb !");
     0
 }
@@ -104,7 +104,7 @@ impl KVMi {
 
     pub fn pause(&self) -> Result<u32,Error> {
         let mut expected_count: c_uint = 0;
-        let mut expected_count_ptr = &mut expected_count;
+        let expected_count_ptr = &mut expected_count;
         let res = unsafe {
             kvmi_sys::kvmi_pause_all_vcpus(self.dom, expected_count_ptr)
         };
@@ -127,7 +127,7 @@ impl KVMi {
     pub fn pop_event(&self) -> Result<KVMiEvent,Error> {
         // kvmi_pop_event will allocate the struct and set this pointer
         let mut ev_ptr: *mut kvmi_dom_event = null_mut();
-        let mut ev_ptr_ptr = &mut ev_ptr as *mut _;
+        let ev_ptr_ptr = &mut ev_ptr as *mut _;
         let res = unsafe {
             kvmi_sys::kvmi_pop_event(self.dom, ev_ptr_ptr)
         };
