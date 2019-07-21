@@ -5,6 +5,7 @@ use std::ptr::{null_mut};
 use std::os::raw::{c_void, c_uchar, c_int, c_uint};
 use std::sync::{Mutex, Condvar};
 use std::io::Error;
+use std::mem;
 
 
 #[derive(Debug)]
@@ -18,6 +19,20 @@ struct KVMiCon {
     dom: *mut c_void,
     guard: Mutex<bool>,
     condvar: Condvar,
+}
+
+pub enum KVMiEventType {
+    Unhook = kvmi_sys::KVMI_EVENT_UNHOOK as isize,
+    Cr = kvmi_sys::KVMI_EVENT_CR as isize,
+    Msr = kvmi_sys::KVMI_EVENT_MSR as isize,
+    XSetBv = kvmi_sys::KVMI_EVENT_XSETBV as isize,
+    Breakoint = kvmi_sys::KVMI_EVENT_BREAKPOINT as isize,
+    Hypercall = kvmi_sys::KVMI_EVENT_HYPERCALL as isize,
+    Pf = kvmi_sys::KVMI_EVENT_PF as isize,
+    Trap = kvmi_sys::KVMI_EVENT_TRAP as isize,
+    Descriptor = kvmi_sys::KVMI_EVENT_DESCRIPTOR as isize,
+    CreateVCPU = kvmi_sys::KVMI_EVENT_CREATE_VCPU as isize,
+    PauseVCPU = kvmi_sys::KVMI_EVENT_PAUSE_VCPU as isize,
 }
 
 unsafe extern "C" fn new_guest_cb(dom: *mut c_void,
@@ -92,9 +107,22 @@ impl KVMi {
         Ok(expected_count)
     }
 
-    fn wait_event(&self, ms: i32) -> Result<(),Error>{
+    fn wait_event(&self, ms: i32) -> Result<(),Error> {
         let res = unsafe {
             kvmi_sys::kvmi_wait_event(self.dom, ms)
+        };
+        if res > 0 {
+            return Err(Error::last_os_error())
+        }
+        Ok(())
+    }
+
+    fn pop_event(&self) -> Result<(),Error> {
+        let mut ev = mem::MaybeUninit::<kvmi_sys::kvmi_dom_event>::zeroed();
+        let mut ev_ptr = ev.as_mut_ptr();
+        let mut ev_ptr_ptr = &mut ev_ptr;
+        let res = unsafe {
+            kvmi_sys::kvmi_pop_event(self.dom, ev_ptr_ptr)
         };
         if res > 0 {
             return Err(Error::last_os_error())
