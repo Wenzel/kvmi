@@ -105,6 +105,17 @@ impl KVMi {
         kvmi
     }
 
+    pub fn read_physical(&self, gpa: u64, buffer: &mut [u8]) -> Result<(),Error> {
+        let res = unsafe {
+            let buf_ptr = buffer.as_mut_ptr() as *mut c_void;
+            kvmi_sys::kvmi_read_physical(self.dom, gpa, buf_ptr, buffer.len())
+        };
+        if res > 0 {
+            return Err(Error::last_os_error())
+        }
+        Ok(())
+    }
+
     pub fn pause(&self) -> Result<u32,Error> {
         let mut expected_count: c_uint = 0;
         let expected_count_ptr = &mut expected_count;
