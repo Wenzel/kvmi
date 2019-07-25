@@ -70,7 +70,7 @@ extern "C" fn handshake_cb(_arg1: *const kvmi_qemu2introspector,
 
 impl KVMi {
     pub fn new(socket_path: &str) -> KVMi {
-        let socket_path = CString::new(socket_path.as_bytes()).unwrap();
+        let socket_path = CString::new(socket_path.clone()).unwrap();
         let accept_db = Some(new_guest_cb as
                              unsafe extern "C" fn(*mut c_void,
                                               *mut [c_uchar; 16usize],
