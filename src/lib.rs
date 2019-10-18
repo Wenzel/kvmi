@@ -9,6 +9,7 @@ use std::os::raw::{c_void, c_uchar, c_int, c_uint};
 use std::sync::{Mutex, Condvar};
 use std::io::Error;
 use std::mem;
+use std::convert::TryInto;
 
 
 #[derive(Debug)]
@@ -116,16 +117,26 @@ impl KVMi {
         Ok(())
     }
 
-    pub fn pause(&self) -> Result<u32,Error> {
-        let mut expected_count: c_uint = 0;
-        let expected_count_ptr = &mut expected_count;
+    pub fn pause(&self) -> Result<(),Error> {
+        let vcpu_count = self.get_vcpu_count()?;
         let res = unsafe {
-            kvmi_sys::kvmi_pause_all_vcpus(self.dom, expected_count_ptr)
+            kvmi_sys::kvmi_pause_all_vcpus(self.dom, vcpu_count)
         };
         if res > 0 {
             return Err(Error::last_os_error())
         }
-        Ok(expected_count)
+        Ok(())
+    }
+
+    pub fn get_vcpu_count(&self) -> Result<u32,Error> {
+        let mut vcpu_count: c_uint = 0;
+        let res = unsafe {
+            kvmi_sys::kvmi_get_vcpu_count(self.dom, &mut vcpu_count)
+        };
+        if res > 0 {
+            return Err(Error::last_os_error())
+        }
+        Ok(vcpu_count)
     }
 
     pub fn wait_event(&self, ms: i32) -> Result<(),Error> {
@@ -150,7 +161,7 @@ impl KVMi {
         }
         let kvmi_event = unsafe {
             KVMiEvent {
-                kind: KVMiEventType::from_u32((*ev_ptr).event.common.event).unwrap(),
+                kind: KVMiEventType::from_u8((*ev_ptr).event.common.event).unwrap(),
                 seq: (*ev_ptr).seq,
             }
         };
@@ -161,10 +172,10 @@ impl KVMi {
         let size = mem::size_of::<kvmi_event_reply>();
         let res = unsafe {
             let mut rpl = mem::MaybeUninit::<kvmi_event_reply>::zeroed().assume_init();
-            rpl.action = KVMI_EVENT_ACTION_CONTINUE;
-            rpl.event = event.kind.to_u32().unwrap();
+            rpl.action = KVMI_EVENT_ACTION_CONTINUE.try_into().unwrap();
+            rpl.event = event.kind.to_u8().unwrap();
             let rpl_ptr = &rpl as *const kvmi_event_reply as *const c_void;
-            kvmi_sys::kvmi_reply_event(self.dom, event.seq, rpl_ptr, size as u32)
+            kvmi_sys::kvmi_reply_event(self.dom, event.seq, rpl_ptr, size as usize)
         };
         if res > 0 {
             return Err(Error::last_os_error())
