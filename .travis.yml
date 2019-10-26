@@ -1,0 +1,13 @@
+dist: bionic
+language: rust
+rust:
+  - stable
+
+sudo: required
+install:
+  - sudo apt-get install git
+  - git clone https://github.com/KVM-VMI/kvm --branch kvmi --depth 1
+  - cd kvm/tools/kvm/kvmi && make && sudo cp -rv include/ /usr/local && sudo cp libkvmi.so /usr/local/lib
+script:
+  - cargo build
+  - cargo test
