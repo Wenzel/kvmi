@@ -2,7 +2,7 @@ use enum_primitive_derive::Primitive;
 use num_traits::{FromPrimitive, ToPrimitive};
 use kvmi_sys;
 use kvmi_sys::{kvmi_qemu2introspector, kvmi_introspector2qemu, kvmi_dom_event,kvmi_event_reply,
-               KVMI_EVENT_ACTION_CONTINUE};
+               KVMI_EVENT_ACTION_CONTINUE, kvm_regs, kvm_sregs, kvm_msrs};
 use std::ffi::CString;
 use std::ptr::null_mut;
 use std::os::raw::{c_void, c_uchar, c_int, c_uint};
@@ -137,6 +137,20 @@ impl KVMi {
             return Err(Error::last_os_error())
         }
         Ok(vcpu_count)
+    }
+
+    pub fn get_registers(&self, vcpu: u16) -> Result<(kvm_regs, kvm_sregs, kvm_msrs), Error> {
+        let mut regs: kvm_regs = unsafe { mem::MaybeUninit::<kvm_regs>::zeroed().assume_init() };
+        let mut sregs: kvm_sregs = unsafe { mem::MaybeUninit::<kvm_sregs>::zeroed().assume_init() };
+        let mut msrs: kvm_msrs = unsafe { mem::MaybeUninit::<kvm_msrs>::zeroed().assume_init() };
+        let mut mode: c_uint = 0;
+        let res = unsafe {
+            kvmi_sys::kvmi_get_registers(self.dom, vcpu, &mut regs, &mut sregs, &mut msrs, &mut mode)
+        };
+        if res > 0 {
+            return Err(Error::last_os_error())
+        }
+        Ok((regs, sregs, msrs))
     }
 
     pub fn wait_event(&self, ms: i32) -> Result<(),Error> {
