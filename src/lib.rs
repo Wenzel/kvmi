@@ -197,7 +197,7 @@ impl KVMi {
         Ok(())
     }
 
-    fn get_maximum_gfn(&self) -> Result<u64, Error> {
+    pub fn get_maximum_gfn(&self) -> Result<u64, Error> {
         let mut max_gfn: u64 = 0;
         let res = unsafe {
             kvmi_sys::kvmi_get_maximum_gfn(self.dom, &mut max_gfn)
