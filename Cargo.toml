@@ -10,6 +10,7 @@ description = "Rust bindings for KVMi"
 license = "GPL-3.0-only"
 
 [dependencies]
+log = "0.4.8"
 kvmi-sys = { git = "https://github.com/Wenzel/kvmi-sys.git" }
 enum-primitive-derive = "0.1.2"
 num-traits = "0.2.8"

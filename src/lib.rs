@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate log;
+
 use enum_primitive_derive::Primitive;
 use num_traits::{FromPrimitive, ToPrimitive};
 use kvmi_sys;
@@ -49,7 +52,7 @@ pub struct KVMiEvent {
 unsafe extern "C" fn new_guest_cb(dom: *mut c_void,
                            _uuid: *mut [c_uchar; 16usize],
                            cb_ctx: *mut c_void) -> c_int {
-    println!("new guest cb !");
+    debug!("KVMi new guest");
     if cb_ctx.is_null() {
         panic!("Unexpected null context");
     }
@@ -65,7 +68,7 @@ unsafe extern "C" fn new_guest_cb(dom: *mut c_void,
 extern "C" fn handshake_cb(_arg1: *const kvmi_qemu2introspector,
                            _arg2: *mut kvmi_introspector2qemu,
                            _cb_ctx: *mut c_void) -> c_int {
-    println!("handshake cb !");
+    debug!("KVMi handshake");
     0
 }
 
@@ -97,12 +100,12 @@ impl KVMi {
         };
         if !kvmi.ctx.is_null() {
             // wait for connexion
-            println!("Waiting for connexion..");
+            debug!("Waiting for connexion...");
             kvmi_con.condvar.wait(lock).unwrap();
         }
         // TODO: error handling
         kvmi.dom = kvmi_con.dom;
-        println!("Connected {:?}", kvmi);
+        debug!("Connected {:?}", kvmi);
         kvmi
     }
 
