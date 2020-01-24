@@ -1,5 +1,5 @@
 # kvmi
 
-[![Build Status](https://travis-ci.com/Wenzel/kvmi.svg?branch=master)](https://travis-ci.com/Wenzel/kvmi)
+![](https://github.com/Wenzel/kvmi/workflows/Build/badge.svg)
 
 > Rust bindings to KVM's introspection libkvmi library
