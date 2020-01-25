@@ -5,6 +5,7 @@ use enum_primitive_derive::Primitive;
 use num_traits::{FromPrimitive, ToPrimitive};
 use kvmi_sys;
 use kvmi_sys::{kvmi_qemu2introspector, kvmi_introspector2qemu, kvmi_dom_event,kvmi_event_reply,
+               kvmi_control_events, kvmi_control_cr,
                KVMI_EVENT_ACTION_CONTINUE, kvm_regs, kvm_sregs, kvm_msrs};
 use std::ffi::CString;
 use std::ptr::null_mut;
@@ -41,6 +42,13 @@ pub enum KVMiEventType {
     Descriptor = kvmi_sys::KVMI_EVENT_DESCRIPTOR as isize,
     CreateVCPU = kvmi_sys::KVMI_EVENT_CREATE_VCPU as isize,
     PauseVCPU = kvmi_sys::KVMI_EVENT_PAUSE_VCPU as isize,
+}
+
+#[derive(Primitive,Debug)]
+pub enum KVMiCr {
+    Cr0 = 0,
+    Cr3 = 3,
+    Cr4 = 4,
 }
 
 #[derive(Debug)]
@@ -107,6 +115,26 @@ impl KVMi {
         kvmi.dom = kvmi_con.dom;
         debug!("Connected {:?}", kvmi);
         kvmi
+    }
+
+    pub fn control_events(&self, vcpu: u16, event_type: KVMiEventType, enabled: bool) -> Result<(),Error> {
+        let res = unsafe {
+            kvmi_control_events(self.dom, vcpu, event_type.to_i32().unwrap(), enabled)
+        };
+        if res > 0 {
+            return Err(Error::last_os_error())
+        }
+        Ok(())
+    }
+
+    pub fn control_cr(&self, vcpu: u16, reg: KVMiCr, enabled: bool) -> Result<(),Error> {
+        let res = unsafe {
+            kvmi_control_cr(self.dom, vcpu, reg.to_u32().unwrap(), enabled)
+        };
+        if res > 0 {
+            return Err(Error::last_os_error())
+        }
+        Ok(())
     }
 
     pub fn read_physical(&self, gpa: u64, buffer: &mut [u8]) -> Result<(),Error> {
