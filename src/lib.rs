@@ -13,7 +13,8 @@ use enum_primitive_derive::Primitive;
 use kvmi_sys;
 use kvmi_sys::{
     kvm_msrs, kvm_regs, kvm_sregs, kvmi_control_cr, kvmi_control_events, kvmi_dom_event,
-    kvmi_event_reply, kvmi_introspector2qemu, kvmi_qemu2introspector, kvmi_vcpu_hdr,
+    kvmi_event_cr_reply, kvmi_event_reply, kvmi_introspector2qemu, kvmi_qemu2introspector,
+    kvmi_vcpu_hdr,
 };
 use nix::errno::Errno;
 use num_traits::{FromPrimitive, ToPrimitive};
@@ -245,33 +246,51 @@ impl KVMi {
                 // event specific reply struct (ex: struct kvmi_event_cr_reply cr)
             } rpl = {0};
         */
-        let (rpl, size) = match event.kind {
+
+        // declare and set EventReplyCommon to factorise some code
+        #[repr(C)]
+        struct EventReplyCommon {
+            hdr: kvmi_vcpu_hdr,
+            common: kvmi_event_reply,
+        }
+        let mut reply_common =
+            unsafe { mem::MaybeUninit::<EventReplyCommon>::zeroed().assume_init() };
+        unsafe {
+            // set hdr
+            reply_common.hdr.vcpu = (*event.ffi_event).event.common.vcpu;
+            // set common
+            reply_common.common.event = (*event.ffi_event).event.common.event;
+        }
+        reply_common.common.action = reply_type.to_i32().unwrap().try_into().unwrap();
+        // we need the event sequence number for the reply
+        let seq = unsafe { (*event.ffi_event).seq };
+        
+        let res = match event.kind {
+            // PauseVCPU event doesn't have any event specific struct
+            // reuse EventReplyCommon
             KVMiEventType::PauseVCPU => {
+                let size = mem::size_of::<EventReplyCommon>();
+                let rpl_ptr: *const c_void = &reply_common as *const _ as *const c_void;
+                unsafe { kvmi_sys::kvmi_reply_event(self.dom, seq, rpl_ptr, size as usize) }
+            }
+            KVMiEventType::Cr => {
                 #[repr(C)]
-                struct EventReply {
-                    hdr: kvmi_vcpu_hdr,
-                    common: kvmi_event_reply,
+                struct EventReplyCr {
+                    common: EventReplyCommon,
+                    cr: kvmi_event_cr_reply,
                 }
 
-                let mut reply =
-                    unsafe { mem::MaybeUninit::<EventReply>::zeroed().assume_init() };
-                unsafe {
-                    // set hdr
-                    reply.hdr.vcpu = (*event.ffi_event).event.common.vcpu;
-                    // set common
-                    reply.common.event = (*event.ffi_event).event.common.event;
-                }
-                reply.common.action = reply_type.to_i32().unwrap().try_into().unwrap();
-                let size = mem::size_of::<EventReply>();
-                (reply, size)
+                let mut reply = unsafe { mem::MaybeUninit::<EventReplyCr>::zeroed().assume_init() };
+                reply.common = reply_common;
+                // set event specific attributes
+                // reply.cr.xxx = ...
+                let size = mem::size_of::<EventReplyCr>();
+                let rpl_ptr: *const c_void = &reply as *const _ as *const c_void;
+                unsafe { kvmi_sys::kvmi_reply_event(self.dom, seq, rpl_ptr, size as usize) }
             }
             _ => unimplemented!(),
         };
-        // TODO: remove this cast if possible
-        let rpl_ptr: *const c_void = &rpl as *const _ as *const c_void;
 
-        let seq = unsafe { (*event.ffi_event).seq };
-        let res = unsafe { kvmi_sys::kvmi_reply_event(self.dom, seq, rpl_ptr, size as usize) };
         if res != 0 {
             return Err(Error::last_os_error());
         }
