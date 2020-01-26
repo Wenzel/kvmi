@@ -53,14 +53,6 @@ pub enum KVMiEventReply {
     Crash = kvmi_sys::KVMI_EVENT_ACTION_CRASH as isize,
 }
 
-// force to declare each EventReply structs here
-// anonymous struct cannot be declared repr(C) in Rust
-#[repr(C)]
-struct KVMiEventReplyPauseVCPU {
-    hdr: kvmi_vcpu_hdr,
-    common: kvmi_event_reply,
-}
-
 #[derive(Primitive, Debug, Copy, Clone)]
 pub enum KVMiCr {
     Cr0 = 0,
@@ -253,12 +245,16 @@ impl KVMi {
                 // event specific reply struct (ex: struct kvmi_event_cr_reply cr)
             } rpl = {0};
         */
-        // however, as we cannot declare repr(C) compatible anonymous struct in Rust,
-        // we use our own pre-defined event structs
         let (rpl, size) = match event.kind {
             KVMiEventType::PauseVCPU => {
+                #[repr(C)]
+                struct EventReply {
+                    hdr: kvmi_vcpu_hdr,
+                    common: kvmi_event_reply,
+                }
+
                 let mut reply =
-                    unsafe { mem::MaybeUninit::<KVMiEventReplyPauseVCPU>::zeroed().assume_init() };
+                    unsafe { mem::MaybeUninit::<EventReply>::zeroed().assume_init() };
                 unsafe {
                     // set hdr
                     reply.hdr.vcpu = (*event.ffi_event).event.common.vcpu;
@@ -266,7 +262,7 @@ impl KVMi {
                     reply.common.event = (*event.ffi_event).event.common.event;
                 }
                 reply.common.action = reply_type.to_i32().unwrap().try_into().unwrap();
-                let size = mem::size_of::<KVMiEventReplyPauseVCPU>();
+                let size = mem::size_of::<EventReply>();
                 (reply, size)
             }
             _ => unimplemented!(),
