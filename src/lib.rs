@@ -141,7 +141,7 @@ impl KVMi {
     ) -> Result<(), Error> {
         let res =
             unsafe { kvmi_control_events(self.dom, vcpu, event_type.to_i32().unwrap(), enabled) };
-        if res > 0 {
+        if res != 0 {
             return Err(Error::last_os_error());
         }
         Ok(())
@@ -149,7 +149,7 @@ impl KVMi {
 
     pub fn control_cr(&self, vcpu: u16, reg: KVMiCr, enabled: bool) -> Result<(), Error> {
         let res = unsafe { kvmi_control_cr(self.dom, vcpu, reg.to_u32().unwrap(), enabled) };
-        if res > 0 {
+        if res != 0 {
             return Err(Error::last_os_error());
         }
         Ok(())
@@ -160,7 +160,7 @@ impl KVMi {
             let buf_ptr = buffer.as_mut_ptr() as *mut c_void;
             kvmi_sys::kvmi_read_physical(self.dom, gpa, buf_ptr, buffer.len())
         };
-        if res > 0 {
+        if res != 0 {
             return Err(Error::last_os_error());
         }
         Ok(())
@@ -169,7 +169,7 @@ impl KVMi {
     pub fn pause(&self) -> Result<(), Error> {
         let vcpu_count = self.get_vcpu_count()?;
         let res = unsafe { kvmi_sys::kvmi_pause_all_vcpus(self.dom, vcpu_count) };
-        if res > 0 {
+        if res != 0 {
             return Err(Error::last_os_error());
         }
         Ok(())
@@ -178,7 +178,7 @@ impl KVMi {
     pub fn get_vcpu_count(&self) -> Result<u32, Error> {
         let mut vcpu_count: c_uint = 0;
         let res = unsafe { kvmi_sys::kvmi_get_vcpu_count(self.dom, &mut vcpu_count) };
-        if res > 0 {
+        if res != 0 {
             return Err(Error::last_os_error());
         }
         Ok(vcpu_count)
@@ -194,7 +194,7 @@ impl KVMi {
                 self.dom, vcpu, &mut regs, &mut sregs, &mut msrs, &mut mode,
             )
         };
-        if res > 0 {
+        if res != 0 {
             return Err(Error::last_os_error());
         }
         Ok((regs, sregs, msrs))
@@ -202,7 +202,7 @@ impl KVMi {
 
     pub fn wait_event(&self, ms: i32) -> Result<Option<()>, Error> {
         let res = unsafe { kvmi_sys::kvmi_wait_event(self.dom, ms) };
-        if res > 0 {
+        if res != 0 {
             // no events ?
             if Errno::last() == Errno::ETIMEDOUT {
                 return Ok(None);
@@ -217,7 +217,7 @@ impl KVMi {
         let mut ev_ptr: *mut kvmi_dom_event = null_mut();
         let ev_ptr_ptr = &mut ev_ptr as *mut _;
         let res = unsafe { kvmi_sys::kvmi_pop_event(self.dom, ev_ptr_ptr) };
-        if res > 0 {
+        if res != 0 {
             return Err(Error::last_os_error());
         }
         let kvmi_event = unsafe {
@@ -238,7 +238,7 @@ impl KVMi {
             let rpl_ptr = &rpl as *const kvmi_event_reply as *const c_void;
             kvmi_sys::kvmi_reply_event(self.dom, event.seq, rpl_ptr, size as usize)
         };
-        if res > 0 {
+        if res != 0 {
             return Err(Error::last_os_error());
         }
         Ok(())
