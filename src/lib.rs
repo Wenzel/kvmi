@@ -252,8 +252,10 @@ impl KVMi {
         }
         Ok(max_gfn)
     }
+}
 
-    fn close(&mut self) {
+impl Drop for KVMi {
+    fn drop(&mut self) {
         if self.ctx != null_mut() {
             unsafe {
                 kvmi_sys::kvmi_uninit(self.ctx);
@@ -266,11 +268,5 @@ impl KVMi {
             };
             self.dom = null_mut();
         }
-    }
-}
-
-impl Drop for KVMi {
-    fn drop(&mut self) {
-        self.close();
     }
 }
