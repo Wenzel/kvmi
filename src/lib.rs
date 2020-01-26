@@ -13,7 +13,7 @@ use enum_primitive_derive::Primitive;
 use kvmi_sys;
 use kvmi_sys::{
     kvm_msrs, kvm_regs, kvm_sregs, kvmi_control_cr, kvmi_control_events, kvmi_dom_event,
-    kvmi_event_reply, kvmi_introspector2qemu, kvmi_qemu2introspector, KVMI_EVENT_ACTION_CONTINUE,
+    kvmi_event_reply, kvmi_introspector2qemu, kvmi_qemu2introspector, kvmi_vcpu_hdr,
 };
 use nix::errno::Errno;
 use num_traits::{FromPrimitive, ToPrimitive};
@@ -31,7 +31,7 @@ struct KVMiCon {
     condvar: Condvar,
 }
 
-#[derive(Primitive, Debug)]
+#[derive(Primitive, Debug, Copy, Clone)]
 pub enum KVMiEventType {
     Unhook = kvmi_sys::KVMI_EVENT_UNHOOK as isize,
     Cr = kvmi_sys::KVMI_EVENT_CR as isize,
@@ -46,7 +46,22 @@ pub enum KVMiEventType {
     PauseVCPU = kvmi_sys::KVMI_EVENT_PAUSE_VCPU as isize,
 }
 
-#[derive(Primitive, Debug)]
+#[derive(Primitive, Debug, Copy, Clone)]
+pub enum KVMiEventReply {
+    Continue = kvmi_sys::KVMI_EVENT_ACTION_CONTINUE as isize,
+    Retry = kvmi_sys::KVMI_EVENT_ACTION_RETRY as isize,
+    Crash = kvmi_sys::KVMI_EVENT_ACTION_CRASH as isize,
+}
+
+// force to declare each EventReply structs here
+// anonymous struct cannot be declared repr(C) in Rust
+#[repr(C)]
+struct KVMiEventReplyPauseVCPU {
+    hdr: kvmi_vcpu_hdr,
+    common: kvmi_event_reply,
+}
+
+#[derive(Primitive, Debug, Copy, Clone)]
 pub enum KVMiCr {
     Cr0 = 0,
     Cr3 = 3,
@@ -56,7 +71,7 @@ pub enum KVMiCr {
 #[derive(Debug)]
 pub struct KVMiEvent {
     pub kind: KVMiEventType,
-    pub seq: u32,
+    ffi_event: *mut kvmi_dom_event,
 }
 
 unsafe extern "C" fn new_guest_cb(
@@ -223,21 +238,44 @@ impl KVMi {
         let kvmi_event = unsafe {
             KVMiEvent {
                 kind: KVMiEventType::from_u8((*ev_ptr).event.common.event).unwrap(),
-                seq: (*ev_ptr).seq,
+                ffi_event: ev_ptr,
             }
         };
         Ok(kvmi_event)
     }
 
-    pub fn reply_continue(&self, event: &KVMiEvent) -> Result<(), Error> {
-        let size = mem::size_of::<kvmi_event_reply>();
-        let res = unsafe {
-            let mut rpl = mem::MaybeUninit::<kvmi_event_reply>::zeroed().assume_init();
-            rpl.action = KVMI_EVENT_ACTION_CONTINUE.try_into().unwrap();
-            rpl.event = event.kind.to_u8().unwrap();
-            let rpl_ptr = &rpl as *const kvmi_event_reply as *const c_void;
-            kvmi_sys::kvmi_reply_event(self.dom, event.seq, rpl_ptr, size as usize)
+    pub fn reply(&self, event: &KVMiEvent, reply_type: KVMiEventReply) -> Result<(), Error> {
+        // reply should be like the following C struct
+        /*
+            struct {
+                struct kvmi_vcpu_hdr hdr;
+                struct kvmi_event_reply common;
+                // event specific reply struct (ex: struct kvmi_event_cr_reply cr)
+            } rpl = {0};
+        */
+        // however, as we cannot declare repr(C) compatible anonymous struct in Rust,
+        // we use our own pre-defined event structs
+        let (rpl, size) = match event.kind {
+            KVMiEventType::PauseVCPU => {
+                let mut reply =
+                    unsafe { mem::MaybeUninit::<KVMiEventReplyPauseVCPU>::zeroed().assume_init() };
+                unsafe {
+                    // set hdr
+                    reply.hdr.vcpu = (*event.ffi_event).event.common.vcpu;
+                    // set common
+                    reply.common.event = (*event.ffi_event).event.common.event;
+                }
+                reply.common.action = reply_type.to_i32().unwrap().try_into().unwrap();
+                let size = mem::size_of::<KVMiEventReplyPauseVCPU>();
+                (reply, size)
+            }
+            _ => unimplemented!(),
         };
+        // TODO: remove this cast if possible
+        let rpl_ptr: *const c_void = &rpl as *const _ as *const c_void;
+
+        let seq = unsafe { (*event.ffi_event).seq };
+        let res = unsafe { kvmi_sys::kvmi_reply_event(self.dom, seq, rpl_ptr, size as usize) };
         if res != 0 {
             return Err(Error::last_os_error());
         }
@@ -268,5 +306,11 @@ impl Drop for KVMi {
             };
             self.dom = null_mut();
         }
+    }
+}
+
+impl Drop for KVMiEvent {
+    fn drop(&mut self) {
+        // TODO how to free self.kvmi_ffi_event ?
     }
 }
