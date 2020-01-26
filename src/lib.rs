@@ -14,8 +14,9 @@ use kvmi_sys;
 use kvmi_sys::{
     kvm_msrs, kvm_regs, kvm_sregs, kvmi_control_cr, kvmi_control_events, kvmi_dom_event,
     kvmi_event_cr_reply, kvmi_event_reply, kvmi_introspector2qemu, kvmi_qemu2introspector,
-    kvmi_vcpu_hdr,
+    kvmi_vcpu_hdr, KVMI_EVENT_CR, KVMI_EVENT_PAUSE_VCPU,
 };
+
 use nix::errno::Errno;
 use num_traits::{FromPrimitive, ToPrimitive};
 
@@ -32,19 +33,23 @@ struct KVMiCon {
     condvar: Condvar,
 }
 
-#[derive(Primitive, Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum KVMiEventType {
-    Unhook = kvmi_sys::KVMI_EVENT_UNHOOK as isize,
-    Cr = kvmi_sys::KVMI_EVENT_CR as isize,
-    Msr = kvmi_sys::KVMI_EVENT_MSR as isize,
-    XSetBv = kvmi_sys::KVMI_EVENT_XSETBV as isize,
-    Breakoint = kvmi_sys::KVMI_EVENT_BREAKPOINT as isize,
-    Hypercall = kvmi_sys::KVMI_EVENT_HYPERCALL as isize,
-    Pf = kvmi_sys::KVMI_EVENT_PF as isize,
-    Trap = kvmi_sys::KVMI_EVENT_TRAP as isize,
-    Descriptor = kvmi_sys::KVMI_EVENT_DESCRIPTOR as isize,
-    CreateVCPU = kvmi_sys::KVMI_EVENT_CREATE_VCPU as isize,
-    PauseVCPU = kvmi_sys::KVMI_EVENT_PAUSE_VCPU as isize,
+    PauseVCPU,
+    Cr { cr_type: KVMiCr, new: u64, old: u64 },
+}
+
+impl KVMiEventType {
+    fn to_i32(&self) -> i32 {
+        match *self {
+            KVMiEventType::PauseVCPU => KVMI_EVENT_PAUSE_VCPU.try_into().unwrap(),
+            KVMiEventType::Cr {
+                cr_type: _,
+                new: _,
+                old: _,
+            } => KVMI_EVENT_CR.try_into().unwrap(),
+        }
+    }
 }
 
 #[derive(Primitive, Debug, Copy, Clone)]
@@ -63,7 +68,7 @@ pub enum KVMiCr {
 
 #[derive(Debug)]
 pub struct KVMiEvent {
-    pub kind: KVMiEventType,
+    pub ev_type: KVMiEventType,
     ffi_event: *mut kvmi_dom_event,
 }
 
@@ -147,8 +152,7 @@ impl KVMi {
         event_type: KVMiEventType,
         enabled: bool,
     ) -> Result<(), Error> {
-        let res =
-            unsafe { kvmi_control_events(self.dom, vcpu, event_type.to_i32().unwrap(), enabled) };
+        let res = unsafe { kvmi_control_events(self.dom, vcpu, event_type.to_i32(), enabled) };
         if res != 0 {
             return Err(Error::last_os_error());
         }
@@ -228,11 +232,23 @@ impl KVMi {
         if res != 0 {
             return Err(Error::last_os_error());
         }
-        let kvmi_event = unsafe {
-            KVMiEvent {
-                kind: KVMiEventType::from_u8((*ev_ptr).event.common.event).unwrap(),
-                ffi_event: ev_ptr,
+        let ev_type = unsafe {
+            match (*ev_ptr).event.common.event.try_into().unwrap() {
+                KVMI_EVENT_PAUSE_VCPU => KVMiEventType::PauseVCPU,
+                KVMI_EVENT_CR => KVMiEventType::Cr {
+                    cr_type: KVMiCr::from_i32(
+                        (*ev_ptr).event.__bindgen_anon_1.cr.cr.try_into().unwrap(),
+                    )
+                    .unwrap(),
+                    new: (*ev_ptr).event.__bindgen_anon_1.cr.new_value,
+                    old: (*ev_ptr).event.__bindgen_anon_1.cr.old_value,
+                },
+                _ => unimplemented!(),
             }
+        };
+        let kvmi_event = KVMiEvent {
+            ev_type,
+            ffi_event: ev_ptr,
         };
         Ok(kvmi_event)
     }
@@ -264,8 +280,8 @@ impl KVMi {
         reply_common.common.action = reply_type.to_i32().unwrap().try_into().unwrap();
         // we need the event sequence number for the reply
         let seq = unsafe { (*event.ffi_event).seq };
-        
-        let res = match event.kind {
+
+        let res = match event.ev_type {
             // PauseVCPU event doesn't have any event specific struct
             // reuse EventReplyCommon
             KVMiEventType::PauseVCPU => {
@@ -273,7 +289,11 @@ impl KVMi {
                 let rpl_ptr: *const c_void = &reply_common as *const _ as *const c_void;
                 unsafe { kvmi_sys::kvmi_reply_event(self.dom, seq, rpl_ptr, size as usize) }
             }
-            KVMiEventType::Cr => {
+            KVMiEventType::Cr {
+                cr_type: _,
+                new: _,
+                old: _,
+            } => {
                 #[repr(C)]
                 struct EventReplyCr {
                     common: EventReplyCommon,
@@ -288,7 +308,6 @@ impl KVMi {
                 let rpl_ptr: *const c_void = &reply as *const _ as *const c_void;
                 unsafe { kvmi_sys::kvmi_reply_event(self.dom, seq, rpl_ptr, size as usize) }
             }
-            _ => unimplemented!(),
         };
 
         if res != 0 {
