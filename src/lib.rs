@@ -61,6 +61,7 @@ pub enum KVMiCr {
 
 #[derive(Debug)]
 pub struct KVMiEvent {
+    pub vcpu: u16,
     pub ev_type: KVMiEventType,
     ffi_event: *mut kvmi_dom_event,
 }
@@ -242,6 +243,9 @@ impl KVMi {
             }
         };
         let kvmi_event = KVMiEvent {
+            vcpu: unsafe {
+                (*ev_ptr).event.common.vcpu
+            },
             ev_type,
             ffi_event: ev_ptr,
         };
