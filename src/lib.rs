@@ -33,23 +33,16 @@ struct KVMiCon {
     condvar: Condvar,
 }
 
+#[derive(Debug, Copy, Clone, Primitive)]
+pub enum KVMiInterceptType {
+    PauseVCPU = KVMI_EVENT_PAUSE_VCPU as isize,
+    Cr = KVMI_EVENT_CR as isize,
+}
+
 #[derive(Debug, Copy, Clone)]
 pub enum KVMiEventType {
     PauseVCPU,
     Cr { cr_type: KVMiCr, new: u64, old: u64 },
-}
-
-impl KVMiEventType {
-    fn to_i32(&self) -> i32 {
-        match *self {
-            KVMiEventType::PauseVCPU => KVMI_EVENT_PAUSE_VCPU.try_into().unwrap(),
-            KVMiEventType::Cr {
-                cr_type: _,
-                new: _,
-                old: _,
-            } => KVMI_EVENT_CR.try_into().unwrap(),
-        }
-    }
 }
 
 #[derive(Primitive, Debug, Copy, Clone)]
@@ -149,10 +142,12 @@ impl KVMi {
     pub fn control_events(
         &self,
         vcpu: u16,
-        event_type: KVMiEventType,
+        intercept_type: KVMiInterceptType,
         enabled: bool,
     ) -> Result<(), Error> {
-        let res = unsafe { kvmi_control_events(self.dom, vcpu, event_type.to_i32(), enabled) };
+        let res = unsafe {
+            kvmi_control_events(self.dom, vcpu, intercept_type.to_i32().unwrap(), enabled)
+        };
         if res != 0 {
             return Err(Error::last_os_error());
         }
@@ -233,9 +228,10 @@ impl KVMi {
             return Err(Error::last_os_error());
         }
         let ev_type = unsafe {
-            match (*ev_ptr).event.common.event.try_into().unwrap() {
-                KVMI_EVENT_PAUSE_VCPU => KVMiEventType::PauseVCPU,
-                KVMI_EVENT_CR => KVMiEventType::Cr {
+            let ev_u8 = (*ev_ptr).event.common.event.try_into().unwrap();
+            match KVMiInterceptType::from_u32(ev_u8).unwrap() {
+                KVMiInterceptType::PauseVCPU => KVMiEventType::PauseVCPU,
+                KVMiInterceptType::Cr => KVMiEventType::Cr {
                     cr_type: KVMiCr::from_i32(
                         (*ev_ptr).event.__bindgen_anon_1.cr.cr.try_into().unwrap(),
                     )
@@ -243,7 +239,6 @@ impl KVMi {
                     new: (*ev_ptr).event.__bindgen_anon_1.cr.new_value,
                     old: (*ev_ptr).event.__bindgen_anon_1.cr.old_value,
                 },
-                _ => unimplemented!(),
             }
         };
         let kvmi_event = KVMiEvent {
