@@ -19,6 +19,7 @@ use kvmi_sys::{
 
 use nix::errno::Errno;
 use num_traits::{FromPrimitive, ToPrimitive};
+use libc::free;
 
 #[derive(Debug)]
 pub struct KVMi {
@@ -345,6 +346,8 @@ impl Drop for KVMi {
 
 impl Drop for KVMiEvent {
     fn drop(&mut self) {
-        // TODO how to free self.kvmi_ffi_event ?
+        unsafe {
+            free(self.ffi_event as *mut c_void)
+        };
     }
 }
