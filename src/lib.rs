@@ -290,7 +290,7 @@ impl KVMi {
             }
             KVMiEventType::Cr {
                 cr_type: _,
-                new: _,
+                new,
                 old: _,
             } => {
                 #[repr(C)]
@@ -303,6 +303,7 @@ impl KVMi {
                 reply.common = reply_common;
                 // set event specific attributes
                 // reply.cr.xxx = ...
+                reply.cr.new_val = new;
                 let size = mem::size_of::<EventReplyCr>();
                 let rpl_ptr: *const c_void = &reply as *const _ as *const c_void;
                 unsafe { kvmi_sys::kvmi_reply_event(self.dom, seq, rpl_ptr, size as usize) }
