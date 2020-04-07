@@ -17,9 +17,9 @@ use kvmi_sys::{
     kvmi_vcpu_hdr, KVMI_EVENT_CR, KVMI_EVENT_PAUSE_VCPU,
 };
 
+use libc::free;
 use nix::errno::Errno;
 use num_traits::{FromPrimitive, ToPrimitive};
-use libc::free;
 
 #[derive(Debug)]
 pub struct KVMi {
@@ -209,7 +209,7 @@ impl KVMi {
         Ok((regs, sregs, msrs))
     }
 
-    pub fn wait_event(&self, ms: i32) -> Result<Option<()>, Error> {
+    pub fn wait_and_pop_event(&self, ms: i32) -> Result<Option<KVMiEvent>, Error> {
         let res = unsafe { kvmi_sys::kvmi_wait_event(self.dom, ms) };
         if res != 0 {
             // no events ?
@@ -218,10 +218,7 @@ impl KVMi {
             }
             return Err(Error::last_os_error());
         }
-        Ok(Some(()))
-    }
-
-    pub fn pop_event(&self) -> Result<KVMiEvent, Error> {
+        // a new event is available
         // kvmi_pop_event will allocate the struct and set this pointer
         let mut ev_ptr: *mut kvmi_dom_event = null_mut();
         let ev_ptr_ptr = &mut ev_ptr as *mut _;
@@ -244,13 +241,11 @@ impl KVMi {
             }
         };
         let kvmi_event = KVMiEvent {
-            vcpu: unsafe {
-                (*ev_ptr).event.common.vcpu
-            },
+            vcpu: unsafe { (*ev_ptr).event.common.vcpu },
             ev_type,
             ffi_event: ev_ptr,
         };
-        Ok(kvmi_event)
+        Ok(Some(kvmi_event))
     }
 
     pub fn reply(&self, event: &KVMiEvent, reply_type: KVMiEventReply) -> Result<(), Error> {
@@ -346,8 +341,6 @@ impl Drop for KVMi {
 
 impl Drop for KVMiEvent {
     fn drop(&mut self) {
-        unsafe {
-            free(self.ffi_event as *mut c_void)
-        };
+        unsafe { free(self.ffi_event as *mut c_void) };
     }
 }
