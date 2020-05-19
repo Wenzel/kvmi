@@ -60,6 +60,7 @@ pub enum KVMiEventReply {
 #[derive(Primitive, Debug, Copy, Clone)]
 pub enum KVMiCr {
     Cr0 = 0,
+    Cr2 = 2,
     Cr3 = 3,
     Cr4 = 4,
 }
