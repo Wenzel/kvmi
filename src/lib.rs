@@ -198,18 +198,25 @@ impl KVMi {
         Ok(vcpu_count)
     }
 
-    pub fn get_registers(&self, vcpu: u16, msrs: &mut kvm_msrs) -> Result<(kvm_regs, kvm_sregs), Error> {
+    pub fn get_registers(&self, vcpu: u16,) -> Result<(kvm_regs, kvm_sregs,kvm_msr), Error> {
         let mut regs: kvm_regs = unsafe { mem::MaybeUninit::<kvm_regs>::zeroed().assume_init() };
         let mut sregs: kvm_sregs = unsafe { mem::MaybeUninit::<kvm_sregs>::zeroed().assume_init() };
-        //let mut msrs: kvm_msrs = unsafe { mem::MaybeUninit::<kvm_msrs>::zeroed().assume_init() };
+        let mut msrs: kvm_msr = unsafe { mem::MaybeUninit::<kvm_msrs>::zeroed().assume_init() };
         let mut mode: c_uint = 0;
+        msrs.msrs.nmsrs=6;
+        msrs.entries[0].index = msr_index[MSR_IA32_SYSENTER_CS];
+        msrs.entries[1].index = msr_index[MSR_IA32_SYSENTER_ESP];
+        msrs.entries[2].index = msr_index[MSR_IA32_SYSENTER_EIP];
+        msrs.entries[3].index = msr_index[MSR_EFER];
+        msrs.entries[4].index = msr_index[MSR_STAR];
+        msrs.entries[5].index = msr_index[MSR_LSTAR];
         let res = (self.libkvmi.get_registers)(
-            self.dom, vcpu, &mut regs, &mut sregs,msrs, &mut mode,
+            self.dom, vcpu, &mut regs, &mut sregs, &mut msrs.msrs, &mut mode,
         );
         if res != 0 {
             return Err(Error::last_os_error());
         }
-        Ok((regs, sregs))
+        Ok((regs, sregs, msrs))
     }
 
     pub fn wait_and_pop_event(&self, ms: i32) -> Result<Option<KVMiEvent>, Error> {
