@@ -198,18 +198,18 @@ impl KVMi {
         Ok(vcpu_count)
     }
 
-    pub fn get_registers(&self, vcpu: u16) -> Result<(kvm_regs, kvm_sregs, kvm_msrs), Error> {
+    pub fn get_registers(&self, vcpu: u16, msrs: &mut kvm_msrs) -> Result<(kvm_regs, kvm_sregs), Error> {
         let mut regs: kvm_regs = unsafe { mem::MaybeUninit::<kvm_regs>::zeroed().assume_init() };
         let mut sregs: kvm_sregs = unsafe { mem::MaybeUninit::<kvm_sregs>::zeroed().assume_init() };
-        let mut msrs: kvm_msrs = unsafe { mem::MaybeUninit::<kvm_msrs>::zeroed().assume_init() };
+        //let mut msrs: kvm_msrs = unsafe { mem::MaybeUninit::<kvm_msrs>::zeroed().assume_init() };
         let mut mode: c_uint = 0;
         let res = (self.libkvmi.get_registers)(
-            self.dom, vcpu, &mut regs, &mut sregs, &mut msrs, &mut mode,
+            self.dom, vcpu, &mut regs, &mut sregs,msrs, &mut mode,
         );
         if res != 0 {
             return Err(Error::last_os_error());
         }
-        Ok((regs, sregs, msrs))
+        Ok((regs, sregs))
     }
 
     pub fn wait_and_pop_event(&self, ms: i32) -> Result<Option<KVMiEvent>, Error> {
