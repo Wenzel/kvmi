@@ -62,6 +62,16 @@ type FnGetRegisters = extern "C" fn(
     msrs: *mut kvm_msrs,
     mode: *mut c_uint,
 ) -> c_int;
+
+//kvmi_set_registers
+type FnSetRegisters = extern "C" fn(
+    dom: *mut c_void,
+    vcpu: c_ushort,
+    regs: *mut kvm_regs,
+) -> c_int;
+
+
+
 // kvmi_reply_event
 type FnReplyEvent = extern "C" fn(
     dom: *mut c_void,
@@ -97,6 +107,7 @@ pub struct Libkvmi {
     pub get_vcpu_count: RawSymbol<FnGetVCPUCount>,
     pub read_physical: RawSymbol<FnReadPhysical>,
     pub get_registers: RawSymbol<FnGetRegisters>,
+    pub set_registers: RawSymbol<FnSetRegisters>,
     pub reply_event: RawSymbol<FnReplyEvent>,
     pub pop_event: RawSymbol<FnPopEvent>,
     pub wait_event: RawSymbol<FnWaitEvent>,
@@ -161,6 +172,9 @@ impl Libkvmi {
         let get_registers_sym: Symbol<FnGetRegisters> = lib.get(b"kvmi_get_registers\0").unwrap();
         let get_registers = get_registers_sym.into_raw();
 
+	let set_registers_sym: Symbol<FnSetRegisters> = lib.get(b"kvmi_set_registers\0").unwrap();
+        let set_registers = set_registers_sym.into_raw();
+
         let reply_event_sym: Symbol<FnReplyEvent> = lib.get(b"kvmi_reply_event\0").unwrap();
         let reply_event = reply_event_sym.into_raw();
 
@@ -195,6 +209,7 @@ impl Libkvmi {
             get_vcpu_count,
             read_physical,
             get_registers,
+	    set_registers,
             reply_event,
             pop_event,
             wait_event,

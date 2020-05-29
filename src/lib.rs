@@ -226,6 +226,17 @@ impl KVMi {
         Ok((regs, sregs, msrs))
     }
 
+
+     pub fn set_registers(&self, vcpu: u16, regs: &mut kvm_regs) -> Result<(), Error> {
+       let res = (self.libkvmi.set_registers)(
+            self.dom, vcpu, regs
+        );
+        if res != 0 {
+            return Err(Error::last_os_error());
+        }
+        Ok(())
+    }
+
     pub fn wait_and_pop_event(&self, ms: i32) -> Result<Option<KVMiEvent>, Error> {
         let res = (self.libkvmi.wait_event)(self.dom, ms);
         if res != 0 {
