@@ -18,6 +18,8 @@ use kvmi_sys::{
     kvmi_introspector2qemu, kvmi_qemu2introspector, kvmi_vcpu_hdr, KVMI_EVENT_CR,
     KVMI_EVENT_PAUSE_VCPU,
 };
+use kvmi_sys::kvm_msr_entry;
+
 use libc::free;
 use nix::errno::Errno;
 use num_traits::{FromPrimitive, ToPrimitive};
@@ -72,6 +74,11 @@ pub struct KVMiEvent {
     ffi_event: *mut kvmi_dom_event,
 }
 
+pub struct kvm_msr
+{
+    pub msrs: kvm_msrs,
+    pub entries: [kvm_msr_entry; 6],
+}
 unsafe extern "C" fn new_guest_cb(
     dom: *mut c_void,
     _uuid: *mut [c_uchar; 16usize],
@@ -201,15 +208,15 @@ impl KVMi {
     pub fn get_registers(&self, vcpu: u16,) -> Result<(kvm_regs, kvm_sregs,kvm_msr), Error> {
         let mut regs: kvm_regs = unsafe { mem::MaybeUninit::<kvm_regs>::zeroed().assume_init() };
         let mut sregs: kvm_sregs = unsafe { mem::MaybeUninit::<kvm_sregs>::zeroed().assume_init() };
-        let mut msrs: kvm_msr = unsafe { mem::MaybeUninit::<kvm_msrs>::zeroed().assume_init() };
+        let mut msrs: kvm_msr = unsafe { mem::MaybeUninit::<kvm_msr>::zeroed().assume_init() };
         let mut mode: c_uint = 0;
         msrs.msrs.nmsrs=6;
-        msrs.entries[0].index = msr_index[MSR_IA32_SYSENTER_CS];
-        msrs.entries[1].index = msr_index[MSR_IA32_SYSENTER_ESP];
-        msrs.entries[2].index = msr_index[MSR_IA32_SYSENTER_EIP];
-        msrs.entries[3].index = msr_index[MSR_EFER];
-        msrs.entries[4].index = msr_index[MSR_STAR];
-        msrs.entries[5].index = msr_index[MSR_LSTAR];
+        msrs.entries[0].index = 0x00000174;
+        msrs.entries[1].index = 0x00000175;
+        msrs.entries[2].index = 0x00000176;
+        msrs.entries[3].index = 0xc0000080;
+        msrs.entries[4].index = 0xc0000081;
+        msrs.entries[5].index = 0xc0000082;
         let res = (self.libkvmi.get_registers)(
             self.dom, vcpu, &mut regs, &mut sregs, &mut msrs.msrs, &mut mode,
         );
