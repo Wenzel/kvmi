@@ -53,6 +53,9 @@ type FnGetVCPUCount = extern "C" fn(dom: *mut c_void, count: *mut c_uint) -> c_i
 // kvmi_read_physical
 type FnReadPhysical =
     extern "C" fn(dom: *mut c_void, gpa: c_ulonglong, buffer: *mut c_void, size: usize) -> c_int;
+// kvmi_write_physical
+type FnWritePhysical =
+    extern "C" fn(dom: *mut c_void, gpa: c_ulonglong, buffer: *mut c_void, size: usize) -> c_int;
 // kvmi_get_registers
 type FnGetRegisters = extern "C" fn(
     dom: *mut c_void,
@@ -106,6 +109,7 @@ pub struct Libkvmi {
     pub pause_all_vcpus: RawSymbol<FnPauseAllVCPUs>,
     pub get_vcpu_count: RawSymbol<FnGetVCPUCount>,
     pub read_physical: RawSymbol<FnReadPhysical>,
+    pub write_physical: RawSymbol<FnWritePhysical>,
     pub get_registers: RawSymbol<FnGetRegisters>,
     pub set_registers: RawSymbol<FnSetRegisters>,
     pub reply_event: RawSymbol<FnReplyEvent>,
@@ -169,10 +173,13 @@ impl Libkvmi {
         let read_physical_sym: Symbol<FnReadPhysical> = lib.get(b"kvmi_read_physical\0").unwrap();
         let read_physical = read_physical_sym.into_raw();
 
+        let write_physical_sym: Symbol<FnWritePhysical> = lib.get(b"kvmi_write_physical\0").unwrap();
+        let write_physical = write_physical_sym.into_raw();
+
         let get_registers_sym: Symbol<FnGetRegisters> = lib.get(b"kvmi_get_registers\0").unwrap();
         let get_registers = get_registers_sym.into_raw();
 
-	let set_registers_sym: Symbol<FnSetRegisters> = lib.get(b"kvmi_set_registers\0").unwrap();
+	    let set_registers_sym: Symbol<FnSetRegisters> = lib.get(b"kvmi_set_registers\0").unwrap();
         let set_registers = set_registers_sym.into_raw();
 
         let reply_event_sym: Symbol<FnReplyEvent> = lib.get(b"kvmi_reply_event\0").unwrap();
@@ -208,8 +215,9 @@ impl Libkvmi {
             pause_all_vcpus,
             get_vcpu_count,
             read_physical,
+            write_physical,
             get_registers,
-	    set_registers,
+	        set_registers,
             reply_event,
             pop_event,
             wait_event,
@@ -218,3 +226,4 @@ impl Libkvmi {
         }
     }
 }
+

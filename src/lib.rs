@@ -187,6 +187,15 @@ impl KVMi {
         Ok(())
     }
 
+    pub fn write_physical(&self, gpa: u64, buffer: &mut [u8]) -> Result<(), Error> {
+        let buf_ptr = buffer.as_mut_ptr() as *mut c_void;
+        let res = (self.libkvmi.write_physical)(self.dom, gpa, buf_ptr, buffer.len());
+        if res != 0 {
+            return Err(Error::last_os_error());
+        }
+        Ok(())
+    }
+
     pub fn pause(&self) -> Result<(), Error> {
         let vcpu_count = self.get_vcpu_count()?;
         let res = (self.libkvmi.pause_all_vcpus)(self.dom, vcpu_count);
@@ -368,3 +377,4 @@ impl Drop for KVMiEvent {
         unsafe { free(self.ffi_event as *mut c_void) };
     }
 }
+
