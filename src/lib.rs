@@ -1,8 +1,9 @@
 #[macro_use]
 extern crate log;
-
+use mockall::*;
+use mockall::predicate::*;
 mod libkvmi;
-
+use std::cmp::PartialEq;
 use std::convert::TryInto;
 use std::ffi::CString;
 use std::io::Error;
@@ -11,12 +12,13 @@ use std::os::raw::{c_int, c_uchar, c_uint, c_void};
 use std::ptr::null_mut;
 use std::sync::{Condvar, Mutex};
 
+
 use enum_primitive_derive::Primitive;
 use kvmi_sys;
 use kvmi_sys::{
-    kvm_msrs, kvm_regs, kvm_sregs, kvmi_dom_event, kvmi_event_cr_reply, kvmi_event_reply,
+    kvm_msrs, kvm_regs, kvm_sregs, kvmi_dom_event, kvmi_event_cr_reply, kvmi_event_msr_reply, kvmi_event_reply,
     kvmi_introspector2qemu, kvmi_qemu2introspector, kvmi_vcpu_hdr, KVMI_EVENT_CR,
-    KVMI_EVENT_PAUSE_VCPU,
+    KVMI_EVENT_PAUSE_VCPU,KVMI_EVENT_MSR,
 };
 use kvmi_sys::kvm_msr_entry;
 
@@ -25,13 +27,6 @@ use nix::errno::Errno;
 use num_traits::{FromPrimitive, ToPrimitive};
 
 use libkvmi::Libkvmi;
-
-#[derive(Debug)]
-pub struct KVMi {
-    ctx: *mut c_void,
-    dom: *mut c_void,
-    libkvmi: Libkvmi,
-}
 
 #[derive(Debug)]
 struct KVMiCon {
@@ -44,12 +39,14 @@ struct KVMiCon {
 pub enum KVMiInterceptType {
     PauseVCPU = KVMI_EVENT_PAUSE_VCPU as isize,
     Cr = KVMI_EVENT_CR as isize,
+    Msr = KVMI_EVENT_MSR as isize,
 }
 
 #[derive(Debug, Copy, Clone)]
 pub enum KVMiEventType {
     PauseVCPU,
     Cr { cr_type: KVMiCr, new: u64, old: u64 },
+    Msr { msr_type: KVMiMsr, new: u64, old: u64},
 }
 
 #[derive(Primitive, Debug, Copy, Clone)]
@@ -59,13 +56,24 @@ pub enum KVMiEventReply {
     Crash = kvmi_sys::KVMI_EVENT_ACTION_CRASH as isize,
 }
 
-#[derive(Primitive, Debug, Copy, Clone)]
+#[derive(Primitive, Debug, Copy, Clone,PartialEq)]
 pub enum KVMiCr {
     Cr0 = 0,
     Cr2 = 2,
     Cr3 = 3,
     Cr4 = 4,
 }
+
+#[derive(Primitive, Debug, Copy, Clone,PartialEq)]
+pub enum KVMiMsr {
+    SysenterCs = 0x00000174,
+    SysenterEsp = 0x00000175,
+    SysenterEip = 0x00000176,
+    MsrEfer = 0x0000080,
+    MsrStar = 0x0000081,
+    MsrLstar = 0x0000082,
+}
+
 
 #[derive(Debug)]
 pub struct KVMiEvent {
@@ -109,6 +117,14 @@ unsafe extern "C" fn handshake_cb(
     0
 }
 
+
+#[derive(Debug)]
+pub struct KVMi {
+    ctx: *mut c_void,
+    dom: *mut c_void,
+    libkvmi: Libkvmi,
+}
+
 impl KVMi {
     pub fn new(socket_path: &str) -> KVMi {
         let libkvmi = unsafe { Libkvmi::new() };
@@ -122,7 +138,7 @@ impl KVMi {
                 as unsafe extern "C" fn(
                     *const kvmi_qemu2introspector,
                     *mut kvmi_introspector2qemu,
-                    *mut c_void,
+	            *mut c_void,
                 ) -> c_int,
         );
         let mut kvmi = KVMi {
@@ -178,6 +194,14 @@ impl KVMi {
         Ok(())
     }
 
+    pub fn control_msr(&self, vcpu: u16, reg: KVMiMsr, enabled: bool) -> Result<(), Error> {
+        let res = (self.libkvmi.control_msr)(self.dom, vcpu, reg.to_u32().unwrap(), enabled);
+        if res != 0 {
+            return Err(Error::last_os_error());
+        }
+        Ok(())
+    }
+
     pub fn read_physical(&self, gpa: u64, buffer: &mut [u8]) -> Result<(), Error> {
         let buf_ptr = buffer.as_mut_ptr() as *mut c_void;
         let res = (self.libkvmi.read_physical)(self.dom, gpa, buf_ptr, buffer.len());
@@ -187,8 +211,8 @@ impl KVMi {
         Ok(())
     }
 
-    pub fn write_physical(&self, gpa: u64, buffer: &mut [u8]) -> Result<(), Error> {
-        let buf_ptr = buffer.as_mut_ptr() as *mut c_void;
+    pub fn write_physical(&self, gpa: u64, buffer: &[u8]) -> Result<(), Error> {
+        let buf_ptr = buffer.as_ptr() as *const c_void;
         let res = (self.libkvmi.write_physical)(self.dom, gpa, buf_ptr, buffer.len());
         if res != 0 {
             return Err(Error::last_os_error());
@@ -236,7 +260,7 @@ impl KVMi {
     }
 
 
-     pub fn set_registers(&self, vcpu: u16, regs: &mut kvm_regs) -> Result<(), Error> {
+     pub fn set_registers(&self, vcpu: u16, regs: &kvm_regs) -> Result<(), Error> {
        let res = (self.libkvmi.set_registers)(
             self.dom, vcpu, regs
         );
@@ -274,6 +298,14 @@ impl KVMi {
                     .unwrap(),
                     new: (*ev_ptr).event.__bindgen_anon_1.cr.new_value,
                     old: (*ev_ptr).event.__bindgen_anon_1.cr.old_value,
+                },
+                KVMiInterceptType::Msr => KVMiEventType::Msr {
+                    msr_type: KVMiMsr::from_i32(
+                       (*ev_ptr).event.__bindgen_anon_1.msr.msr.try_into().unwrap(),
+                    )
+                    .unwrap(),
+                    new: (*ev_ptr).event.__bindgen_anon_1.msr.new_value,
+                    old: (*ev_ptr).event.__bindgen_anon_1.msr.old_value,
                 },
             }
         };
@@ -341,6 +373,29 @@ impl KVMi {
                 let rpl_ptr: *const c_void = &reply as *const _ as *const c_void;
                 (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size as usize)
             }
+
+	    KVMiEventType::Msr {
+                msr_type: _,
+                new,
+                old: _,
+            } => {
+                #[repr(C)]
+                struct EventReplyMsr {
+                    common: EventReplyCommon,
+                    msr: kvmi_event_msr_reply,
+                }
+
+                let mut reply = unsafe { mem::MaybeUninit::<EventReplyMsr>::zeroed().assume_init() };
+                reply.common = reply_common;
+                // set event specific attributes
+                // reply.cr.xxx = ...
+                reply.msr.new_val = new;
+                let size = mem::size_of::<EventReplyMsr>();
+                let rpl_ptr: *const c_void = &reply as *const _ as *const c_void;
+                (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size as usize)
+            }
+
+
         };
 
         if res != 0 {
@@ -359,6 +414,7 @@ impl KVMi {
     }
 }
 
+
 impl Drop for KVMi {
     fn drop(&mut self) {
         if self.ctx != null_mut() {
@@ -372,9 +428,9 @@ impl Drop for KVMi {
     }
 }
 
+
 impl Drop for KVMiEvent {
     fn drop(&mut self) {
         unsafe { free(self.ffi_event as *mut c_void) };
     }
 }
-

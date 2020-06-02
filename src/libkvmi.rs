@@ -44,7 +44,7 @@ type FnControlEvents =
 type FnControlCr =
     extern "C" fn(dom: *mut c_void, vcpu: c_ushort, cr: c_uint, enable: bool) -> c_int;
 // kvmi_control_msr
-type FnControlMSR =
+type FnControlMsr =
     extern "C" fn(dom: *mut c_void, vcpu: c_ushort, msr: c_uint, enable: bool) -> c_int;
 // kvmi_pause_all_vcpus
 type FnPauseAllVCPUs = extern "C" fn(dom: *mut c_void, count: c_uint) -> c_int;
@@ -55,7 +55,7 @@ type FnReadPhysical =
     extern "C" fn(dom: *mut c_void, gpa: c_ulonglong, buffer: *mut c_void, size: usize) -> c_int;
 // kvmi_write_physical
 type FnWritePhysical =
-    extern "C" fn(dom: *mut c_void, gpa: c_ulonglong, buffer: *mut c_void, size: usize) -> c_int;
+    extern "C" fn(dom: *mut c_void, gpa: c_ulonglong, buffer: *const c_void, size: usize) -> c_int;
 // kvmi_get_registers
 type FnGetRegisters = extern "C" fn(
     dom: *mut c_void,
@@ -70,7 +70,7 @@ type FnGetRegisters = extern "C" fn(
 type FnSetRegisters = extern "C" fn(
     dom: *mut c_void,
     vcpu: c_ushort,
-    regs: *mut kvm_regs,
+    regs: *const kvm_regs,
 ) -> c_int;
 
 
@@ -105,7 +105,7 @@ pub struct Libkvmi {
     pub get_version: RawSymbol<FnGetVersion>,
     pub control_events: RawSymbol<FnControlEvents>,
     pub control_cr: RawSymbol<FnControlCr>,
-    pub control_msr: RawSymbol<FnControlMSR>,
+    pub control_msr: RawSymbol<FnControlMsr>,
     pub pause_all_vcpus: RawSymbol<FnPauseAllVCPUs>,
     pub get_vcpu_count: RawSymbol<FnGetVCPUCount>,
     pub read_physical: RawSymbol<FnReadPhysical>,
@@ -160,8 +160,9 @@ impl Libkvmi {
         let control_cr_sym: Symbol<FnControlCr> = lib.get(b"kvmi_control_cr\0").unwrap();
         let control_cr = control_cr_sym.into_raw();
 
-        let control_msr_sym: Symbol<FnControlMSR> = lib.get(b"kvmi_control_msr\0").unwrap();
+        let control_msr_sym: Symbol<FnControlMsr> = lib.get(b"kvmi_control_msr\0").unwrap();
         let control_msr = control_msr_sym.into_raw();
+
 
         let pause_all_vcpus_sym: Symbol<FnPauseAllVCPUs> =
             lib.get(b"kvmi_pause_all_vcpus\0").unwrap();
@@ -217,7 +218,7 @@ impl Libkvmi {
             read_physical,
             write_physical,
             get_registers,
-	        set_registers,
+	    set_registers,
             reply_event,
             pop_event,
             wait_event,
@@ -226,4 +227,3 @@ impl Libkvmi {
         }
     }
 }
-
