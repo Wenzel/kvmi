@@ -18,4 +18,4 @@ num-traits = "0.2.8"
 nix = "0.16.1"
 libc = "0.2.66"
 libloading = "0.6.1"
-mockall = "0.7.1"
+
