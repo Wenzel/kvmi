@@ -18,7 +18,7 @@ use kvmi_sys;
 use kvmi_sys::{
     kvm_msrs, kvm_regs, kvm_sregs, kvmi_dom_event, kvmi_event_cr_reply, kvmi_event_msr_reply, kvmi_event_reply,
     kvmi_introspector2qemu, kvmi_qemu2introspector, kvmi_vcpu_hdr, KVMI_EVENT_CR,
-    KVMI_EVENT_PAUSE_VCPU,KVMI_EVENT_MSR,
+    KVMI_EVENT_PAUSE_VCPU,KVMI_EVENT_MSR,KVMI_EVENT_BREAKPOINT,
 };
 use kvmi_sys::kvm_msr_entry;
 
@@ -40,6 +40,7 @@ pub enum KVMiInterceptType {
     PauseVCPU = KVMI_EVENT_PAUSE_VCPU as isize,
     Cr = KVMI_EVENT_CR as isize,
     Msr = KVMI_EVENT_MSR as isize,
+    Breakpoint = KVMI_EVENT_BREAKPOINT as isize,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -47,6 +48,7 @@ pub enum KVMiEventType {
     PauseVCPU,
     Cr { cr_type: KVMiCr, new: u64, old: u64 },
     Msr { msr_type: KVMiMsr, new: u64, old: u64},
+    Breakpoint,
 }
 
 #[derive(Primitive, Debug, Copy, Clone)]
@@ -291,6 +293,7 @@ impl KVMi {
             let ev_u8 = (*ev_ptr).event.common.event.try_into().unwrap();
             match KVMiInterceptType::from_u32(ev_u8).unwrap() {
                 KVMiInterceptType::PauseVCPU => KVMiEventType::PauseVCPU,
+		KVMiInterceptType::Breakpoint => KVMiEventType::Breakpoint,	
                 KVMiInterceptType::Cr => KVMiEventType::Cr {
                     cr_type: KVMiCr::from_i32(
                         (*ev_ptr).event.__bindgen_anon_1.cr.cr.try_into().unwrap(),
@@ -349,6 +352,11 @@ impl KVMi {
             // PauseVCPU event doesn't have any event specific struct
             // reuse EventReplyCommon
             KVMiEventType::PauseVCPU => {
+                let size = mem::size_of::<EventReplyCommon>();
+                let rpl_ptr: *const c_void = &reply_common as *const _ as *const c_void;
+                (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size as usize)
+            }
+            KVMiEventType::Breakpoint => {
                 let size = mem::size_of::<EventReplyCommon>();
                 let rpl_ptr: *const c_void = &reply_common as *const _ as *const c_void;
                 (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size as usize)
