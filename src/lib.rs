@@ -48,7 +48,7 @@ pub enum KVMiEventType {
     PauseVCPU,
     Cr { cr_type: KVMiCr, new: u64, old: u64 },
     Msr { msr_type: KVMiMsr, new: u64, old: u64},
-    Breakpoint,
+    Breakpoint { gpa: u64, insn_len: u8},
 }
 
 #[derive(Primitive, Debug, Copy, Clone)]
@@ -293,7 +293,11 @@ impl KVMi {
             let ev_u8 = (*ev_ptr).event.common.event.try_into().unwrap();
             match KVMiInterceptType::from_u32(ev_u8).unwrap() {
                 KVMiInterceptType::PauseVCPU => KVMiEventType::PauseVCPU,
-		KVMiInterceptType::Breakpoint => KVMiEventType::Breakpoint,	
+		        KVMiInterceptType::Breakpoint => KVMiEventType::Breakpoint {
+                    gpa: (*ev_ptr).event.__bindgen_anon_1.breakpoint.gpa,
+                    insn_len: (*ev_ptr).event.__bindgen_anon_1.breakpoint.insn_len,
+                },
+
                 KVMiInterceptType::Cr => KVMiEventType::Cr {
                     cr_type: KVMiCr::from_i32(
                         (*ev_ptr).event.__bindgen_anon_1.cr.cr.try_into().unwrap(),
@@ -356,7 +360,7 @@ impl KVMi {
                 let rpl_ptr: *const c_void = &reply_common as *const _ as *const c_void;
                 (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size as usize)
             }
-            KVMiEventType::Breakpoint => {
+            KVMiEventType::Breakpoint { gpa: _, insn_len: _, } => {
                 let size = mem::size_of::<EventReplyCommon>();
                 let rpl_ptr: *const c_void = &reply_common as *const _ as *const c_void;
                 (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size as usize)
