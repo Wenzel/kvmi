@@ -8,7 +8,7 @@ use std::convert::TryInto;
 use std::ffi::CString;
 use std::io::Error;
 use std::mem;
-use std::os::raw::{c_int, c_uchar, c_uint, c_void};
+use std::os::raw::{c_int, c_uchar, c_uint, c_void, c_ushort};
 use std::ptr::null_mut;
 use std::sync::{Condvar, Mutex};
 
@@ -18,7 +18,7 @@ use kvmi_sys;
 use kvmi_sys::{
     kvm_msrs, kvm_regs, kvm_sregs, kvmi_dom_event, kvmi_event_cr_reply, kvmi_event_msr_reply, kvmi_event_reply,
     kvmi_introspector2qemu, kvmi_qemu2introspector, kvmi_vcpu_hdr, KVMI_EVENT_CR,
-    KVMI_EVENT_PAUSE_VCPU,KVMI_EVENT_MSR,KVMI_EVENT_BREAKPOINT,
+    KVMI_EVENT_PAUSE_VCPU,KVMI_EVENT_MSR,KVMI_EVENT_BREAKPOINT,KVMI_EVENT_PF,
 };
 use kvmi_sys::kvm_msr_entry;
 
@@ -41,6 +41,13 @@ pub enum KVMiInterceptType {
     Cr = KVMI_EVENT_CR as isize,
     Msr = KVMI_EVENT_MSR as isize,
     Breakpoint = KVMI_EVENT_BREAKPOINT as isize,
+    Pagefault = KVMI_EVENT_PF as isize,	
+}
+pub enum KVMiPageAccess
+{
+	PageAccessW=kvmi_sys::KVMI_PAGE_ACCESS_W as isize,
+	PageAccessR=kvmi_sys::KVMI_PAGE_ACCESS_R as isize,
+	PageAccessX=kvmi_sys::KVMI_PAGE_ACCESS_X as isize,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -49,6 +56,7 @@ pub enum KVMiEventType {
     Cr { cr_type: KVMiCr, new: u64, old: u64 },
     Msr { msr_type: KVMiMsr, new: u64, old: u64},
     Breakpoint { gpa: u64, insn_len: u8},
+    Pagefault { gva: u64, gpa: u64, access: u8, view: u16}
 }
 
 #[derive(Primitive, Debug, Copy, Clone)]
@@ -214,13 +222,33 @@ impl KVMi {
     }
 
     pub fn write_physical(&self, gpa: u64, buffer: &[u8]) -> Result<(), Error> {
-        let buf_ptr = buffer.as_ptr() as *const c_void;
+        let buf_ptr = buffer.as_ptr() as *mut c_void;
         let res = (self.libkvmi.write_physical)(self.dom, gpa, buf_ptr, buffer.len());
         if res != 0 {
             return Err(Error::last_os_error());
         }
         Ok(())
     }
+
+    pub fn get_page_access(&self, gpa: u64) -> Result<u8, Error> {
+        let mut access: c_uchar = 0;
+        let res = (self.libkvmi.get_page_access)(self.dom, gpa, &mut access);
+        if res != 0 {
+            return Err(Error::last_os_error());
+        }
+        Ok(access)
+    }
+
+    pub fn set_page_access(&self, mut gpa: u64, mut access: u8) -> Result<(), Error> {
+	let count: c_ushort = 1;
+        let res = (self.libkvmi.set_page_access)(self.dom, &mut gpa, &mut access, count);
+        if res != 0 {
+            return Err(Error::last_os_error());
+        }
+        Ok(())
+    }
+
+ 
 
     pub fn pause(&self) -> Result<(), Error> {
         let vcpu_count = self.get_vcpu_count()?;
@@ -293,9 +321,15 @@ impl KVMi {
             let ev_u8 = (*ev_ptr).event.common.event.try_into().unwrap();
             match KVMiInterceptType::from_u32(ev_u8).unwrap() {
                 KVMiInterceptType::PauseVCPU => KVMiEventType::PauseVCPU,
-		        KVMiInterceptType::Breakpoint => KVMiEventType::Breakpoint {
+		KVMiInterceptType::Breakpoint => KVMiEventType::Breakpoint {
                     gpa: (*ev_ptr).event.__bindgen_anon_1.breakpoint.gpa,
                     insn_len: (*ev_ptr).event.__bindgen_anon_1.breakpoint.insn_len,
+                },
+		KVMiInterceptType::Pagefault => KVMiEventType::Pagefault {
+                    gpa: (*ev_ptr).event.__bindgen_anon_1.page_fault.gpa,
+		    gva: (*ev_ptr).event.__bindgen_anon_1.page_fault.gva,
+                    access: (*ev_ptr).event.__bindgen_anon_1.page_fault.access,
+		    view: (*ev_ptr).event.__bindgen_anon_1.page_fault.view,
                 },
 
                 KVMiInterceptType::Cr => KVMiEventType::Cr {
@@ -353,7 +387,7 @@ impl KVMi {
         let seq = unsafe { (*event.ffi_event).seq };
 
         let res = match event.ev_type {
-            // PauseVCPU event doesn't have any event specific struct
+         // PauseVCPU event doesn't have any event specific struct
             // reuse EventReplyCommon
             KVMiEventType::PauseVCPU => {
                 let size = mem::size_of::<EventReplyCommon>();
@@ -361,6 +395,11 @@ impl KVMi {
                 (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size as usize)
             }
             KVMiEventType::Breakpoint { gpa: _, insn_len: _, } => {
+                let size = mem::size_of::<EventReplyCommon>();
+                let rpl_ptr: *const c_void = &reply_common as *const _ as *const c_void;
+                (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size as usize)
+            }
+	     KVMiEventType::Pagefault { gpa: _, gva: _, access: _,view: _ } => {
                 let size = mem::size_of::<EventReplyCommon>();
                 let rpl_ptr: *const c_void = &reply_common as *const _ as *const c_void;
                 (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size as usize)
