@@ -1,4 +1,3 @@
-
 #![allow(clippy::mutex_atomic)] // prevent fp with idiomatic condvar code
 
 #[macro_use]
@@ -306,7 +305,6 @@ impl KVMIntrospectable for KVMi {
         }
         Ok(vcpu_count)
     }
-
 
     fn get_registers(&self, vcpu: u16) -> Result<(kvm_regs, kvm_sregs, KvmMsr), Error> {
         let mut regs: kvm_regs = unsafe { mem::MaybeUninit::<kvm_regs>::zeroed().assume_init() };
