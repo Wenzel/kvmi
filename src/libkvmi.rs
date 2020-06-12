@@ -7,7 +7,7 @@ use kvmi_sys::{
 use libloading::os::unix::Symbol as RawSymbol;
 use libloading::{Library, Symbol};
 
-const LIBKVMI_FILENAME: &'static str = "libkvmi.so";
+const LIBKVMI_FILENAME: &str = "libkvmi.so";
 // libkvmi function definitions type aliases
 // kvmi_init_vsock
 type FnInitVSock = extern "C" fn(
