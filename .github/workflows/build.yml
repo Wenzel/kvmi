@@ -1,13 +1,10 @@
-name: Build
+name: KVMi CI
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
-  kvm:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-16.04, ubuntu-18.04]
+  build:
+    runs-on: ubuntu-latest
 
     steps:
     - name: install libkvmi
@@ -16,6 +13,20 @@ jobs:
         cd kvm/tools/kvm/kvmi
         make
         sudo make install
+    - name: install clippy
+      run: rustup component add clippy
     - uses: actions/checkout@v1
-    - name: build KVM driver
+    - name: build KVMi
       run: cargo build
+    - name: clippy check
+      run: cargo clippy -- -D warnings
+
+  rustfmt:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: install rustfmt
+      run: rustup component add rustfmt
+    - uses: actions/checkout@v1
+    - name: rustfmt check
+      run: cargo fmt -- --check
