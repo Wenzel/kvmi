@@ -1,4 +1,4 @@
-name: KVMi CI
+name: Build
 
 on: [push, pull_request]
 
@@ -13,20 +13,36 @@ jobs:
         cd kvm/tools/kvm/kvmi
         make
         sudo make install
-    - name: install clippy
-      run: rustup component add clippy
+    - name: install stable toolchain with clippy
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        components: clippy
     - uses: actions/checkout@v1
     - name: build KVMi
-      run: cargo build
-    - name: clippy check
-      run: cargo clippy -- -D warnings
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+    - name: annotate commit with clippy warnings
+      uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: -- -D warnings
 
   rustfmt:
     runs-on: ubuntu-latest
 
     steps:
-    - name: install rustfmt
-      run: rustup component add rustfmt
+    - name: install stable toolchain with rustfmt
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        components: rustfmt
     - uses: actions/checkout@v1
     - name: rustfmt check
-      run: cargo fmt -- --check
+      uses: actions-rs/cargo@v1
+      with:
+        command: fmt
+        args: -- --check
