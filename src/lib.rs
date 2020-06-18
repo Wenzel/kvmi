@@ -1,3 +1,5 @@
+#![allow(clippy::mutex_atomic)] // prevent fp with idiomatic condvar code
+
 #[macro_use]
 extern crate log;
 
@@ -12,7 +14,6 @@ use std::ptr::null_mut;
 use std::sync::{Condvar, Mutex};
 
 use enum_primitive_derive::Primitive;
-use kvmi_sys;
 use kvmi_sys::{
     kvm_msrs, kvm_regs, kvm_sregs, kvmi_dom_event, kvmi_event_cr_reply, kvmi_event_reply,
     kvmi_introspector2qemu, kvmi_qemu2introspector, kvmi_vcpu_hdr, KVMI_EVENT_CR,
@@ -81,12 +82,12 @@ unsafe extern "C" fn new_guest_cb(
         panic!("Unexpected null context");
     }
     let kvmi_con = &mut *(cb_ctx as *mut KVMiCon);
-    let mut started = kvmi_con
+    let mut connected = kvmi_con
         .guard
         .lock()
         .expect("Failed to acquire connexion mutex");
     kvmi_con.dom = dom;
-    *started = true;
+    *connected = true;
     // wake up waiters
     kvmi_con.condvar.notify_one();
     0
@@ -104,7 +105,7 @@ unsafe extern "C" fn handshake_cb(
 impl KVMi {
     pub fn new(socket_path: &str) -> KVMi {
         let libkvmi = unsafe { Libkvmi::new() };
-        let socket_path = CString::new(socket_path.clone()).unwrap();
+        let socket_path = CString::new(socket_path).unwrap();
         let accept_db = Some(
             new_guest_cb
                 as unsafe extern "C" fn(*mut c_void, *mut [c_uchar; 16usize], *mut c_void) -> c_int,
@@ -129,15 +130,16 @@ impl KVMi {
         };
         let cb_ctx: *mut c_void = &mut kvmi_con as *mut _ as *mut _;
         // kvmi_dom = NULL
-        let lock = kvmi_con
+        let mut connected = kvmi_con
             .guard
             .lock()
-            .expect("Failed to acquire connexion mutex");
+            .expect("Failed to acquire connection mutex");
         kvmi.ctx = (kvmi.libkvmi.init_unix_socket)(socket_path.as_ptr(), accept_db, hsk_cb, cb_ctx);
         if !kvmi.ctx.is_null() {
-            // wait for connexion
-            debug!("Waiting for connexion...");
-            kvmi_con.condvar.wait(lock).unwrap();
+            debug!("Waiting for connection...");
+            while !*connected {
+                connected = kvmi_con.condvar.wait(connected).unwrap();
+            }
         }
         // TODO: error handling
         kvmi.dom = kvmi_con.dom;
@@ -326,11 +328,11 @@ impl KVMi {
 
 impl Drop for KVMi {
     fn drop(&mut self) {
-        if self.ctx != null_mut() {
+        if !self.ctx.is_null() {
             (self.libkvmi.uninit)(self.ctx);
             self.ctx = null_mut();
         }
-        if self.dom != null_mut() {
+        if !self.dom.is_null() {
             (self.libkvmi.domain_close)(self.dom, true);
             self.dom = null_mut();
         }

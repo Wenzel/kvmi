@@ -1,13 +1,10 @@
 name: Build
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
-  kvm:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-16.04, ubuntu-18.04]
+  build:
+    runs-on: ubuntu-latest
 
     steps:
     - name: install libkvmi
@@ -16,6 +13,36 @@ jobs:
         cd kvm/tools/kvm/kvmi
         make
         sudo make install
+    - name: install stable toolchain with clippy
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        components: clippy
     - uses: actions/checkout@v1
-    - name: build KVM driver
-      run: cargo build
+    - name: build KVMi
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+    - name: annotate commit with clippy warnings
+      uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: -- -D warnings
+
+  rustfmt:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: install stable toolchain with rustfmt
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        components: rustfmt
+    - uses: actions/checkout@v1
+    - name: rustfmt check
+      uses: actions-rs/cargo@v1
+      with:
+        command: fmt
+        args: -- --check
