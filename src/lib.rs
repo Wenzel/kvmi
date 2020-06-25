@@ -4,12 +4,11 @@
 extern crate log;
 mod libkvmi;
 use enum_primitive_derive::Primitive;
-use kvmi_sys::kvm_msr_entry;
 use kvmi_sys::{
-    kvm_msrs, kvm_regs, kvm_sregs, kvmi_dom_event, kvmi_event_cr_reply, kvmi_event_msr_reply,
-    kvmi_event_pf_reply, kvmi_event_reply, kvmi_introspector2qemu, kvmi_qemu2introspector,
-    kvmi_vcpu_hdr, KVMI_EVENT_BREAKPOINT, KVMI_EVENT_CR, KVMI_EVENT_MSR, KVMI_EVENT_PAUSE_VCPU,
-    KVMI_EVENT_PF,
+    kvm_msr_entry, kvm_msrs, kvm_regs, kvm_sregs, kvmi_dom_event, kvmi_event_cr_reply,
+    kvmi_event_msr_reply, kvmi_event_pf_reply, kvmi_event_reply, kvmi_introspector2qemu,
+    kvmi_qemu2introspector, kvmi_vcpu_hdr, KVMI_EVENT_BREAKPOINT, KVMI_EVENT_CR, KVMI_EVENT_MSR,
+    KVMI_EVENT_PAUSE_VCPU, KVMI_EVENT_PF,
 };
 use libc::free;
 use nix::errno::Errno;
@@ -31,6 +30,8 @@ struct KVMiCon {
     guard: Mutex<bool>,
     condvar: Condvar,
 }
+
+pub type KVMiRegs = kvm_regs;
 
 #[derive(Debug, Copy, Clone, Primitive)]
 pub enum KVMiInterceptType {
@@ -55,7 +56,7 @@ pub enum KVMiEventType {
         old: u64,
     },
     Msr {
-        msr_type: KVMiMsr,
+        msr_type: u32,
         new: u64,
         old: u64,
     },
@@ -81,7 +82,6 @@ pub enum KVMiEventReply {
 #[derive(Primitive, Debug, Copy, Clone, PartialEq)]
 pub enum KVMiCr {
     Cr0 = 0,
-    Cr2 = 2,
     Cr3 = 3,
     Cr4 = 4,
 }
@@ -215,8 +215,8 @@ impl KVMi {
         Ok(())
     }
 
-    pub fn control_msr(&self, vcpu: u16, reg: KVMiMsr, enabled: bool) -> Result<(), Error> {
-        let res = (self.libkvmi.control_msr)(self.dom, vcpu, reg.to_u32().unwrap(), enabled);
+    pub fn control_msr(&self, vcpu: u16, reg: u32, enabled: bool) -> Result<(), Error> {
+        let res = (self.libkvmi.control_msr)(self.dom, vcpu, reg, enabled);
         if res != 0 {
             return Err(Error::last_os_error());
         }
@@ -303,7 +303,7 @@ impl KVMi {
         Ok((regs, sregs, msrs))
     }
 
-    pub fn set_registers(&self, vcpu: u16, regs: &kvm_regs) -> Result<(), Error> {
+    pub fn set_registers(&self, vcpu: u16, regs: &KVMiRegs) -> Result<(), Error> {
         let res = (self.libkvmi.set_registers)(self.dom, vcpu, regs);
         if res != 0 {
             return Err(Error::last_os_error());
@@ -352,10 +352,7 @@ impl KVMi {
                     old: (*ev_ptr).event.__bindgen_anon_1.cr.old_value,
                 },
                 KVMiInterceptType::Msr => KVMiEventType::Msr {
-                    msr_type: KVMiMsr::from_i32(
-                        (*ev_ptr).event.__bindgen_anon_1.msr.msr.try_into().unwrap(),
-                    )
-                    .unwrap(),
+                    msr_type: (*ev_ptr).event.__bindgen_anon_1.msr.msr,
                     new: (*ev_ptr).event.__bindgen_anon_1.msr.new_value,
                     old: (*ev_ptr).event.__bindgen_anon_1.msr.old_value,
                 },
