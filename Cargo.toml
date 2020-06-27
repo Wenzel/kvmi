@@ -9,6 +9,7 @@ keywords = ["KVM", "KVMi"]
 description = "Rust bindings for KVMi"
 license = "GPL-3.0-only"
 
+
 [dependencies]
 log = "0.4.8"
 kvmi-sys = { git = "https://github.com/Wenzel/kvmi-sys.git" }
@@ -17,3 +18,6 @@ num-traits = "0.2.8"
 nix = "0.16.1"
 libc = "0.2.66"
 libloading = "0.6.1"
+mockall = "0.7.1"
+
+

@@ -1,4 +1,4 @@
-use std::os::raw::{c_char, c_int, c_uint, c_ulonglong, c_ushort, c_void};
+use std::os::raw::{c_char, c_int, c_uchar, c_uint, c_ulonglong, c_ushort, c_void};
 
 use kvmi_sys::{
     kvm_msrs, kvm_regs, kvm_sregs, kvmi_dom_event, kvmi_handshake_cb, kvmi_log_cb,
@@ -44,7 +44,7 @@ type FnControlEvents =
 type FnControlCr =
     extern "C" fn(dom: *mut c_void, vcpu: c_ushort, cr: c_uint, enable: bool) -> c_int;
 // kvmi_control_msr
-type FnControlMSR =
+type FnControlMsr =
     extern "C" fn(dom: *mut c_void, vcpu: c_ushort, msr: c_uint, enable: bool) -> c_int;
 // kvmi_pause_all_vcpus
 type FnPauseAllVCPUs = extern "C" fn(dom: *mut c_void, count: c_uint) -> c_int;
@@ -53,6 +53,20 @@ type FnGetVCPUCount = extern "C" fn(dom: *mut c_void, count: *mut c_uint) -> c_i
 // kvmi_read_physical
 type FnReadPhysical =
     extern "C" fn(dom: *mut c_void, gpa: c_ulonglong, buffer: *mut c_void, size: usize) -> c_int;
+// kvmi_write_physical
+type FnWritePhysical =
+    extern "C" fn(dom: *mut c_void, gpa: c_ulonglong, buffer: *const c_void, size: usize) -> c_int;
+//kvmi_get_page_access
+type FnGetPageAccess =
+    extern "C" fn(dom: *mut c_void, gpa: c_ulonglong, access: *mut c_uchar) -> c_int;
+//kvmi_set_page_access
+type FnSetPageAccess = extern "C" fn(
+    dom: *mut c_void,
+    gpa: *mut c_ulonglong,
+    access: *mut c_uchar,
+    count: c_ushort,
+) -> c_int;
+
 // kvmi_get_registers
 type FnGetRegisters = extern "C" fn(
     dom: *mut c_void,
@@ -62,6 +76,11 @@ type FnGetRegisters = extern "C" fn(
     msrs: *mut kvm_msrs,
     mode: *mut c_uint,
 ) -> c_int;
+
+//kvmi_set_registers
+type FnSetRegisters =
+    extern "C" fn(dom: *mut c_void, vcpu: c_ushort, regs: *const kvm_regs) -> c_int;
+
 // kvmi_reply_event
 type FnReplyEvent = extern "C" fn(
     dom: *mut c_void,
@@ -92,11 +111,15 @@ pub struct Libkvmi {
     pub get_version: RawSymbol<FnGetVersion>,
     pub control_events: RawSymbol<FnControlEvents>,
     pub control_cr: RawSymbol<FnControlCr>,
-    pub control_msr: RawSymbol<FnControlMSR>,
+    pub control_msr: RawSymbol<FnControlMsr>,
     pub pause_all_vcpus: RawSymbol<FnPauseAllVCPUs>,
     pub get_vcpu_count: RawSymbol<FnGetVCPUCount>,
     pub read_physical: RawSymbol<FnReadPhysical>,
+    pub write_physical: RawSymbol<FnWritePhysical>,
+    pub get_page_access: RawSymbol<FnGetPageAccess>,
+    pub set_page_access: RawSymbol<FnSetPageAccess>,
     pub get_registers: RawSymbol<FnGetRegisters>,
+    pub set_registers: RawSymbol<FnSetRegisters>,
     pub reply_event: RawSymbol<FnReplyEvent>,
     pub pop_event: RawSymbol<FnPopEvent>,
     pub wait_event: RawSymbol<FnWaitEvent>,
@@ -145,7 +168,7 @@ impl Libkvmi {
         let control_cr_sym: Symbol<FnControlCr> = lib.get(b"kvmi_control_cr\0").unwrap();
         let control_cr = control_cr_sym.into_raw();
 
-        let control_msr_sym: Symbol<FnControlMSR> = lib.get(b"kvmi_control_msr\0").unwrap();
+        let control_msr_sym: Symbol<FnControlMsr> = lib.get(b"kvmi_control_msr\0").unwrap();
         let control_msr = control_msr_sym.into_raw();
 
         let pause_all_vcpus_sym: Symbol<FnPauseAllVCPUs> =
@@ -158,8 +181,23 @@ impl Libkvmi {
         let read_physical_sym: Symbol<FnReadPhysical> = lib.get(b"kvmi_read_physical\0").unwrap();
         let read_physical = read_physical_sym.into_raw();
 
+        let write_physical_sym: Symbol<FnWritePhysical> =
+            lib.get(b"kvmi_write_physical\0").unwrap();
+        let write_physical = write_physical_sym.into_raw();
+
+        let get_page_access_sym: Symbol<FnGetPageAccess> =
+            lib.get(b"kvmi_get_page_access\0").unwrap();
+        let get_page_access = get_page_access_sym.into_raw();
+
+        let set_page_access_sym: Symbol<FnSetPageAccess> =
+            lib.get(b"kvmi_set_page_access\0").unwrap();
+        let set_page_access = set_page_access_sym.into_raw();
+
         let get_registers_sym: Symbol<FnGetRegisters> = lib.get(b"kvmi_get_registers\0").unwrap();
         let get_registers = get_registers_sym.into_raw();
+
+        let set_registers_sym: Symbol<FnSetRegisters> = lib.get(b"kvmi_set_registers\0").unwrap();
+        let set_registers = set_registers_sym.into_raw();
 
         let reply_event_sym: Symbol<FnReplyEvent> = lib.get(b"kvmi_reply_event\0").unwrap();
         let reply_event = reply_event_sym.into_raw();
@@ -194,7 +232,11 @@ impl Libkvmi {
             pause_all_vcpus,
             get_vcpu_count,
             read_physical,
+            write_physical,
+            get_page_access,
+            set_page_access,
             get_registers,
+            set_registers,
             reply_event,
             pop_event,
             wait_event,
