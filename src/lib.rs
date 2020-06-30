@@ -4,6 +4,7 @@
 extern crate log;
 mod libkvmi;
 use enum_primitive_derive::Primitive;
+pub use kvmi_sys;
 use kvmi_sys::{
     kvm_msr_entry, kvm_msrs, kvm_regs, kvm_sregs, kvmi_dom_event, kvmi_event_cr_reply,
     kvmi_event_msr_reply, kvmi_event_pf_reply, kvmi_event_reply, kvmi_introspector2qemu,
@@ -145,9 +146,24 @@ pub struct KVMi {
     libkvmi: Libkvmi,
 }
 
+pub fn create_kvmi() -> KVMi {
+    KVMi::new(unsafe { Libkvmi::new() })
+}
+
 impl KVMi {
-    pub fn new(socket_path: &str) -> KVMi {
-        let libkvmi = unsafe { Libkvmi::new() };
+    fn new(libkvmi: Libkvmi) -> KVMi {
+        KVMi {
+            ctx: null_mut(),
+            dom: null_mut(),
+            libkvmi,
+        }
+    }
+}
+
+
+
+impl KVMi {
+    pub fn init(&mut self, socket_path: &str) -> Result<(), Error> {
         let socket_path = CString::new(socket_path).unwrap();
         let accept_db = Some(
             new_guest_cb
@@ -161,11 +177,6 @@ impl KVMi {
                     *mut c_void,
                 ) -> c_int,
         );
-        let mut kvmi = KVMi {
-            ctx: null_mut(),
-            dom: null_mut(),
-            libkvmi,
-        };
         let mut kvmi_con = KVMiCon {
             dom: null_mut(),
             guard: Mutex::new(false),
@@ -177,16 +188,16 @@ impl KVMi {
             .guard
             .lock()
             .expect("Failed to acquire connection mutex");
-        kvmi.ctx = (kvmi.libkvmi.init_unix_socket)(socket_path.as_ptr(), accept_db, hsk_cb, cb_ctx);
-        if !kvmi.ctx.is_null() {
+        self.ctx = (self.libkvmi.init_unix_socket)(socket_path.as_ptr(), accept_db, hsk_cb, cb_ctx);
+        if !self.ctx.is_null() {
             debug!("Waiting for connection...");
             while !*connected {
                 connected = kvmi_con.condvar.wait(connected).unwrap();
             }
         }
         // TODO: error handling
-        kvmi.dom = kvmi_con.dom;
-        kvmi
+        self.dom = kvmi_con.dom;
+        Ok(())
     }
 
     pub fn control_events(
