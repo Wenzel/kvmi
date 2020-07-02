@@ -4,13 +4,12 @@
 extern crate log;
 mod libkvmi;
 use enum_primitive_derive::Primitive;
-pub use kvmi_sys;
 use kvmi_sys::{
-    kvm_msr_entry, kvm_msrs, kvm_regs, kvm_sregs, kvmi_dom_event, kvmi_event_cr_reply,
-    kvmi_event_msr_reply, kvmi_event_pf_reply, kvmi_event_reply, kvmi_introspector2qemu,
-    kvmi_qemu2introspector, kvmi_vcpu_hdr, KVMI_EVENT_BREAKPOINT, KVMI_EVENT_CR, KVMI_EVENT_MSR,
-    KVMI_EVENT_PAUSE_VCPU, KVMI_EVENT_PF,
+    kvm_msr_entry, kvmi_event_cr_reply, kvmi_event_msr_reply, kvmi_event_pf_reply,
+    kvmi_event_reply, kvmi_introspector2qemu, kvmi_qemu2introspector, kvmi_vcpu_hdr,
+    KVMI_EVENT_BREAKPOINT, KVMI_EVENT_CR, KVMI_EVENT_MSR, KVMI_EVENT_PAUSE_VCPU, KVMI_EVENT_PF,
 };
+pub use kvmi_sys::{kvm_msrs, kvm_regs, kvm_sregs, kvmi_dom_event};
 use libc::free;
 use nix::errno::Errno;
 use num_traits::{FromPrimitive, ToPrimitive};
@@ -31,8 +30,6 @@ struct KVMiCon {
     guard: Mutex<bool>,
     condvar: Condvar,
 }
-
-pub type KVMiRegs = kvm_regs;
 
 #[derive(Debug, Copy, Clone, Primitive)]
 pub enum KVMiInterceptType {
@@ -102,7 +99,7 @@ pub enum KVMiMsr {
 pub struct KVMiEvent {
     pub vcpu: u16,
     pub ev_type: KVMiEventType,
-    ffi_event: *mut kvmi_dom_event,
+    pub ffi_event: *mut kvmi_dom_event,
 }
 
 pub struct KvmMsr {
@@ -139,15 +136,38 @@ unsafe extern "C" fn handshake_cb(
     0
 }
 
+pub trait KVMIntrospectable: std::fmt::Debug {
+    fn init(&mut self, socket_path: &str) -> Result<(), Error>;
+    fn control_events(
+        &self,
+        vcpu: u16,
+        intercept_type: KVMiInterceptType,
+        enabled: bool,
+    ) -> Result<(), Error>;
+    fn control_cr(&self, vcpu: u16, reg: KVMiCr, enabled: bool) -> Result<(), Error>;
+    fn control_msr(&self, vcpu: u16, reg: u32, enabled: bool) -> Result<(), Error>;
+    fn read_physical(&self, gpa: u64, buffer: &mut [u8]) -> Result<(), Error>;
+    fn write_physical(&self, gpa: u64, buffer: &[u8]) -> Result<(), Error>;
+    fn get_page_access(&self, gpa: u64) -> Result<u8, Error>;
+    fn set_page_access(&self, gpa: u64, access: u8) -> Result<(), Error>;
+    fn pause(&self) -> Result<(), Error>;
+    fn get_vcpu_count(&self) -> Result<u32, Error>;
+    fn get_registers(&self, vcpu: u16) -> Result<(kvm_regs, kvm_sregs, KvmMsr), Error>;
+    fn set_registers(&self, vcpu: u16, regs: &kvm_regs) -> Result<(), Error>;
+    fn wait_and_pop_event(&self, ms: i32) -> Result<Option<KVMiEvent>, Error>;
+    fn reply(&self, event: &KVMiEvent, reply_type: KVMiEventReply) -> Result<(), Error>;
+    fn get_maximum_gfn(&self) -> Result<u64, Error>;
+}
+
+pub fn create_kvmi() -> KVMi {
+    KVMi::new(unsafe { Libkvmi::new() })
+}
+
 #[derive(Debug)]
 pub struct KVMi {
     ctx: *mut c_void,
     dom: *mut c_void,
     libkvmi: Libkvmi,
-}
-
-pub fn create_kvmi() -> KVMi {
-    KVMi::new(unsafe { Libkvmi::new() })
 }
 
 impl KVMi {
@@ -160,10 +180,8 @@ impl KVMi {
     }
 }
 
-
-
-impl KVMi {
-    pub fn init(&mut self, socket_path: &str) -> Result<(), Error> {
+impl KVMIntrospectable for KVMi {
+    fn init(&mut self, socket_path: &str) -> Result<(), Error> {
         let socket_path = CString::new(socket_path).unwrap();
         let accept_db = Some(
             new_guest_cb
@@ -200,7 +218,7 @@ impl KVMi {
         Ok(())
     }
 
-    pub fn control_events(
+    fn control_events(
         &self,
         vcpu: u16,
         intercept_type: KVMiInterceptType,
@@ -218,7 +236,7 @@ impl KVMi {
         Ok(())
     }
 
-    pub fn control_cr(&self, vcpu: u16, reg: KVMiCr, enabled: bool) -> Result<(), Error> {
+    fn control_cr(&self, vcpu: u16, reg: KVMiCr, enabled: bool) -> Result<(), Error> {
         let res = (self.libkvmi.control_cr)(self.dom, vcpu, reg.to_u32().unwrap(), enabled);
         if res != 0 {
             return Err(Error::last_os_error());
@@ -226,7 +244,7 @@ impl KVMi {
         Ok(())
     }
 
-    pub fn control_msr(&self, vcpu: u16, reg: u32, enabled: bool) -> Result<(), Error> {
+    fn control_msr(&self, vcpu: u16, reg: u32, enabled: bool) -> Result<(), Error> {
         let res = (self.libkvmi.control_msr)(self.dom, vcpu, reg, enabled);
         if res != 0 {
             return Err(Error::last_os_error());
@@ -234,7 +252,7 @@ impl KVMi {
         Ok(())
     }
 
-    pub fn read_physical(&self, gpa: u64, buffer: &mut [u8]) -> Result<(), Error> {
+    fn read_physical(&self, gpa: u64, buffer: &mut [u8]) -> Result<(), Error> {
         let buf_ptr = buffer.as_mut_ptr() as *mut c_void;
         let res = (self.libkvmi.read_physical)(self.dom, gpa, buf_ptr, buffer.len());
         if res != 0 {
@@ -243,7 +261,7 @@ impl KVMi {
         Ok(())
     }
 
-    pub fn write_physical(&self, gpa: u64, buffer: &[u8]) -> Result<(), Error> {
+    fn write_physical(&self, gpa: u64, buffer: &[u8]) -> Result<(), Error> {
         let buf_ptr = buffer.as_ptr() as *mut c_void;
         let res = (self.libkvmi.write_physical)(self.dom, gpa, buf_ptr, buffer.len());
         if res != 0 {
@@ -252,7 +270,7 @@ impl KVMi {
         Ok(())
     }
 
-    pub fn get_page_access(&self, gpa: u64) -> Result<u8, Error> {
+    fn get_page_access(&self, gpa: u64) -> Result<u8, Error> {
         let mut access: c_uchar = 0;
         let res = (self.libkvmi.get_page_access)(self.dom, gpa, &mut access);
         if res != 0 {
@@ -261,7 +279,7 @@ impl KVMi {
         Ok(access)
     }
 
-    pub fn set_page_access(&self, mut gpa: u64, mut access: u8) -> Result<(), Error> {
+    fn set_page_access(&self, mut gpa: u64, mut access: u8) -> Result<(), Error> {
         let count: c_ushort = 1;
         let res = (self.libkvmi.set_page_access)(self.dom, &mut gpa, &mut access, count);
         if res != 0 {
@@ -270,7 +288,7 @@ impl KVMi {
         Ok(())
     }
 
-    pub fn pause(&self) -> Result<(), Error> {
+    fn pause(&self) -> Result<(), Error> {
         let vcpu_count = self.get_vcpu_count()?;
         let res = (self.libkvmi.pause_all_vcpus)(self.dom, vcpu_count);
         if res != 0 {
@@ -279,7 +297,7 @@ impl KVMi {
         Ok(())
     }
 
-    pub fn get_vcpu_count(&self) -> Result<u32, Error> {
+    fn get_vcpu_count(&self) -> Result<u32, Error> {
         let mut vcpu_count: c_uint = 0;
         let res = (self.libkvmi.get_vcpu_count)(self.dom, &mut vcpu_count);
         if res != 0 {
@@ -288,7 +306,7 @@ impl KVMi {
         Ok(vcpu_count)
     }
 
-    pub fn get_registers(&self, vcpu: u16) -> Result<(kvm_regs, kvm_sregs, KvmMsr), Error> {
+    fn get_registers(&self, vcpu: u16) -> Result<(kvm_regs, kvm_sregs, KvmMsr), Error> {
         let mut regs: kvm_regs = unsafe { mem::MaybeUninit::<kvm_regs>::zeroed().assume_init() };
         let mut sregs: kvm_sregs = unsafe { mem::MaybeUninit::<kvm_sregs>::zeroed().assume_init() };
         let mut msrs: KvmMsr = unsafe { mem::MaybeUninit::<KvmMsr>::zeroed().assume_init() };
@@ -314,7 +332,7 @@ impl KVMi {
         Ok((regs, sregs, msrs))
     }
 
-    pub fn set_registers(&self, vcpu: u16, regs: &KVMiRegs) -> Result<(), Error> {
+    fn set_registers(&self, vcpu: u16, regs: &kvm_regs) -> Result<(), Error> {
         let res = (self.libkvmi.set_registers)(self.dom, vcpu, regs);
         if res != 0 {
             return Err(Error::last_os_error());
@@ -322,7 +340,7 @@ impl KVMi {
         Ok(())
     }
 
-    pub fn wait_and_pop_event(&self, ms: i32) -> Result<Option<KVMiEvent>, Error> {
+    fn wait_and_pop_event(&self, ms: i32) -> Result<Option<KVMiEvent>, Error> {
         let res = (self.libkvmi.wait_event)(self.dom, ms);
         if res != 0 {
             // no events ?
@@ -377,7 +395,7 @@ impl KVMi {
         Ok(Some(kvmi_event))
     }
 
-    pub fn reply(&self, event: &KVMiEvent, reply_type: KVMiEventReply) -> Result<(), Error> {
+    fn reply(&self, event: &KVMiEvent, reply_type: KVMiEventReply) -> Result<(), Error> {
         // reply should be like the following C struct
         /*
             struct {
@@ -496,7 +514,7 @@ impl KVMi {
         Ok(())
     }
 
-    pub fn get_maximum_gfn(&self) -> Result<u64, Error> {
+    fn get_maximum_gfn(&self) -> Result<u64, Error> {
         let mut max_gfn: u64 = 0;
         let res = (self.libkvmi.get_maximum_gfn)(self.dom, &mut max_gfn);
         if res > 0 {
