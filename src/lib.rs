@@ -9,7 +9,7 @@ use kvmi_sys::{
     kvmi_event_reply, kvmi_introspector2qemu, kvmi_qemu2introspector, kvmi_vcpu_hdr,
     KVMI_EVENT_BREAKPOINT, KVMI_EVENT_CR, KVMI_EVENT_MSR, KVMI_EVENT_PAUSE_VCPU, KVMI_EVENT_PF,
 };
-pub use kvmi_sys::{kvm_msrs, kvm_regs, kvm_sregs, kvmi_dom_event};
+pub use kvmi_sys::{kvm_msrs, kvm_regs, kvm_segment, kvm_sregs, kvmi_dom_event};
 use libc::free;
 use nix::errno::Errno;
 use num_traits::{FromPrimitive, ToPrimitive};
