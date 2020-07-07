@@ -5,14 +5,16 @@ extern crate log;
 mod libkvmi;
 use enum_primitive_derive::Primitive;
 use kvmi_sys::{
-    kvm_msr_entry, kvmi_dom_event, kvmi_event_cr_reply, kvmi_event_msr_reply, kvmi_event_pf_reply,
+    kvm_msr_entry, kvmi_event_cr_reply, kvmi_event_msr_reply, kvmi_event_pf_reply,
     kvmi_event_reply, kvmi_introspector2qemu, kvmi_qemu2introspector, kvmi_vcpu_hdr,
     KVMI_EVENT_BREAKPOINT, KVMI_EVENT_CR, KVMI_EVENT_MSR, KVMI_EVENT_PAUSE_VCPU, KVMI_EVENT_PF,
 };
-pub use kvmi_sys::{kvm_msrs, kvm_regs, kvm_sregs};
+pub use kvmi_sys::{kvm_msrs, kvm_regs, kvm_segment, kvm_sregs, kvmi_dom_event};
 use libc::free;
 use nix::errno::Errno;
 use num_traits::{FromPrimitive, ToPrimitive};
+use std::alloc::{alloc_zeroed, Layout};
+use std::cmp;
 use std::cmp::PartialEq;
 use std::convert::TryInto;
 use std::ffi::CString;
@@ -20,6 +22,7 @@ use std::io::Error;
 use std::mem;
 use std::os::raw::{c_int, c_uchar, c_uint, c_ushort, c_void};
 use std::ptr::null_mut;
+use std::slice;
 use std::sync::{Condvar, Mutex};
 
 use libkvmi::Libkvmi;
@@ -86,26 +89,22 @@ pub enum KVMiCr {
 
 #[derive(Primitive, Debug, Copy, Clone, PartialEq)]
 #[repr(u32)]
-pub enum KVMiMsr {
-    SysenterCs = 0x174 as u32,
-    SysenterEsp = 0x175 as u32,
-    SysenterEip = 0x176 as u32,
-    MsrEfer = 0xc0000080 as u32,
-    MsrStar = 0xc0000081 as u32,
-    MsrLstar = 0xc0000082 as u32,
+pub enum KVMiMsrIndices {
+    SysenterCs = 0x174,
+    SysenterEsp = 0x175,
+    SysenterEip = 0x176,
+    MsrEfer = 0xc0000080,
+    MsrStar = 0xc0000081,
+    MsrLstar = 0xc0000082,
 }
 
 #[derive(Debug)]
 pub struct KVMiEvent {
     pub vcpu: u16,
     pub ev_type: KVMiEventType,
-    ffi_event: *mut kvmi_dom_event,
+    pub ffi_event: *mut kvmi_dom_event,
 }
 
-pub struct KvmMsr {
-    pub msrs: kvm_msrs,
-    pub entries: [kvm_msr_entry; 6],
-}
 unsafe extern "C" fn new_guest_cb(
     dom: *mut c_void,
     _uuid: *mut [c_uchar; 16usize],
@@ -136,6 +135,57 @@ unsafe extern "C" fn handshake_cb(
     0
 }
 
+pub struct KvmMsrs {
+    internal_msrs: Box<kvm_msrs>,
+}
+
+impl KvmMsrs {
+    fn new() -> KvmMsrs {
+        let size = 6;
+        let layout = Layout::from_size_align(
+            2 * mem::size_of::<u32>() + size * mem::size_of::<kvm_msr_entry>(),
+            cmp::max(mem::align_of::<u32>(), mem::align_of::<kvm_msr_entry>()),
+        )
+        .unwrap();
+        #[allow(clippy::cast_ptr_alignment)]
+        let internal_msrs = unsafe { alloc_zeroed(layout) as *mut kvm_msrs };
+        unsafe { (*internal_msrs).nmsrs = size as _ };
+        let mut msrs = KvmMsrs {
+            internal_msrs: unsafe { Box::from_raw(internal_msrs) },
+        };
+        let mut msrs_as_slice = msrs.as_slice_mut();
+        msrs_as_slice[0].index = KVMiMsrIndices::SysenterCs as u32;
+        msrs_as_slice[1].index = KVMiMsrIndices::SysenterEsp as u32;
+        msrs_as_slice[2].index = KVMiMsrIndices::SysenterEip as u32;
+        msrs_as_slice[3].index = KVMiMsrIndices::MsrEfer as u32;
+        msrs_as_slice[4].index = KVMiMsrIndices::MsrStar as u32;
+        msrs_as_slice[5].index = KVMiMsrIndices::MsrLstar as u32;
+        msrs
+    }
+
+    fn get_internal_msrs_mut(&mut self) -> *mut kvm_msrs {
+        self.internal_msrs.as_mut()
+    }
+
+    pub fn as_slice_mut(&mut self) -> &mut [kvm_msr_entry] {
+        unsafe {
+            slice::from_raw_parts_mut(
+                self.internal_msrs.entries.as_mut_ptr() as *mut _,
+                self.internal_msrs.nmsrs.try_into().unwrap(),
+            )
+        }
+    }
+
+    pub fn as_slice(&self) -> &[kvm_msr_entry] {
+        unsafe {
+            slice::from_raw_parts(
+                self.internal_msrs.entries.as_ptr() as *mut _,
+                self.internal_msrs.nmsrs.try_into().unwrap(),
+            )
+        }
+    }
+}
+
 pub trait KVMIntrospectable: std::fmt::Debug {
     fn init(&mut self, socket_path: &str) -> Result<(), Error>;
     fn control_events(
@@ -152,7 +202,7 @@ pub trait KVMIntrospectable: std::fmt::Debug {
     fn set_page_access(&self, gpa: u64, access: u8) -> Result<(), Error>;
     fn pause(&self) -> Result<(), Error>;
     fn get_vcpu_count(&self) -> Result<u32, Error>;
-    fn get_registers(&self, vcpu: u16) -> Result<(kvm_regs, kvm_sregs, kvm_msrs), Error>;
+    fn get_registers(&self, vcpu: u16) -> Result<(kvm_regs, kvm_sregs, KvmMsrs), Error>;
     fn set_registers(&self, vcpu: u16, regs: &kvm_regs) -> Result<(), Error>;
     fn wait_and_pop_event(&self, ms: i32) -> Result<Option<KVMiEvent>, Error>;
     fn reply(&self, event: &KVMiEvent, reply_type: KVMiEventReply) -> Result<(), Error>;
@@ -306,13 +356,18 @@ impl KVMIntrospectable for KVMi {
         Ok(vcpu_count)
     }
 
-    fn get_registers(&self, vcpu: u16) -> Result<(kvm_regs, kvm_sregs, kvm_msrs), Error> {
+    fn get_registers(&self, vcpu: u16) -> Result<(kvm_regs, kvm_sregs, KvmMsrs), Error> {
         let mut regs: kvm_regs = unsafe { mem::MaybeUninit::<kvm_regs>::zeroed().assume_init() };
         let mut sregs: kvm_sregs = unsafe { mem::MaybeUninit::<kvm_sregs>::zeroed().assume_init() };
-        let mut msrs: kvm_msrs = unsafe { mem::MaybeUninit::<kvm_msrs>::zeroed().assume_init() };
+        let mut msrs = KvmMsrs::new();
         let mut mode: c_uint = 0;
         let res = (self.libkvmi.get_registers)(
-            self.dom, vcpu, &mut regs, &mut sregs, &mut msrs, &mut mode,
+            self.dom,
+            vcpu,
+            &mut regs,
+            &mut sregs,
+            msrs.get_internal_msrs_mut(),
+            &mut mode,
         );
         if res != 0 {
             return Err(Error::last_os_error());
