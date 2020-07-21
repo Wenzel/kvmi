@@ -1,5 +1,4 @@
 #![allow(clippy::mutex_atomic)] // prevent fp with idiomatic condvar code
-
 #[macro_use]
 extern crate log;
 mod libkvmi;
@@ -8,6 +7,7 @@ use kvmi_sys::{
     kvm_msr_entry, kvmi_event_cr_reply, kvmi_event_msr_reply, kvmi_event_pf_reply,
     kvmi_event_reply, kvmi_introspector2qemu, kvmi_qemu2introspector, kvmi_vcpu_hdr,
     KVMI_EVENT_BREAKPOINT, KVMI_EVENT_CR, KVMI_EVENT_MSR, KVMI_EVENT_PAUSE_VCPU, KVMI_EVENT_PF,
+    KVMI_PAGE_ACCESS_R, KVMI_PAGE_ACCESS_W, KVMI_PAGE_ACCESS_X,
 };
 pub use kvmi_sys::{kvm_msrs, kvm_regs, kvm_segment, kvm_sregs, kvmi_dom_event};
 use libc::free;
@@ -16,6 +16,7 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use std::alloc::{alloc_zeroed, Layout};
 use std::cmp;
 use std::cmp::PartialEq;
+use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::ffi::CString;
 use std::io::Error;
@@ -42,10 +43,37 @@ pub enum KVMiInterceptType {
     Breakpoint = KVMI_EVENT_BREAKPOINT as isize,
     Pagefault = KVMI_EVENT_PF as isize,
 }
+
+#[derive(Copy, Clone, Debug)]
+#[repr(u8)]
 pub enum KVMiPageAccess {
-    PageAccessW = kvmi_sys::KVMI_PAGE_ACCESS_W as isize,
-    PageAccessR = kvmi_sys::KVMI_PAGE_ACCESS_R as isize,
-    PageAccessX = kvmi_sys::KVMI_PAGE_ACCESS_X as isize,
+    NIL = 0,
+    R = KVMI_PAGE_ACCESS_R as u8,
+    W = KVMI_PAGE_ACCESS_W as u8,
+    RW = KVMI_PAGE_ACCESS_R as u8 | KVMI_PAGE_ACCESS_W as u8,
+    X = KVMI_PAGE_ACCESS_X as u8,
+    RX = KVMI_PAGE_ACCESS_R as u8 | KVMI_PAGE_ACCESS_X as u8,
+    WX = KVMI_PAGE_ACCESS_W as u8 | KVMI_PAGE_ACCESS_X as u8,
+    RWX = KVMI_PAGE_ACCESS_R as u8 | KVMI_PAGE_ACCESS_W as u8 | KVMI_PAGE_ACCESS_X as u8,
+}
+
+impl TryFrom<u8> for KVMiPageAccess {
+    type Error = &'static str;
+    fn try_from(access: u8) -> Result<Self, Self::Error> {
+        match access as u32 {
+            0 => Ok(KVMiPageAccess::NIL),
+            KVMI_PAGE_ACCESS_R => Ok(KVMiPageAccess::R),
+            KVMI_PAGE_ACCESS_W => Ok(KVMiPageAccess::W),
+            a if a == KVMI_PAGE_ACCESS_R | KVMI_PAGE_ACCESS_W => Ok(KVMiPageAccess::RW),
+            KVMI_PAGE_ACCESS_X => Ok(KVMiPageAccess::X),
+            a if a == KVMI_PAGE_ACCESS_R | KVMI_PAGE_ACCESS_X => Ok(KVMiPageAccess::RX),
+            a if a == KVMI_PAGE_ACCESS_W | KVMI_PAGE_ACCESS_X => Ok(KVMiPageAccess::WX),
+            a if a == KVMI_PAGE_ACCESS_R | KVMI_PAGE_ACCESS_W | KVMI_PAGE_ACCESS_X => {
+                Ok(KVMiPageAccess::RWX)
+            }
+            _ => Err("invalid access value"),
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -68,7 +96,7 @@ pub enum KVMiEventType {
     Pagefault {
         gva: u64,
         gpa: u64,
-        access: u8,
+        access: KVMiPageAccess,
         view: u16,
     },
 }
@@ -198,8 +226,8 @@ pub trait KVMIntrospectable: std::fmt::Debug {
     fn control_msr(&self, vcpu: u16, reg: u32, enabled: bool) -> Result<(), Error>;
     fn read_physical(&self, gpa: u64, buffer: &mut [u8]) -> Result<(), Error>;
     fn write_physical(&self, gpa: u64, buffer: &[u8]) -> Result<(), Error>;
-    fn get_page_access(&self, gpa: u64) -> Result<u8, Error>;
-    fn set_page_access(&self, gpa: u64, access: u8) -> Result<(), Error>;
+    fn get_page_access(&self, gpa: u64) -> Result<KVMiPageAccess, Error>;
+    fn set_page_access(&self, gpa: u64, access: KVMiPageAccess) -> Result<(), Error>;
     fn pause(&self) -> Result<(), Error>;
     fn get_vcpu_count(&self) -> Result<u32, Error>;
     fn get_registers(&self, vcpu: u16) -> Result<(kvm_regs, kvm_sregs, KvmMsrs), Error>;
@@ -320,18 +348,18 @@ impl KVMIntrospectable for KVMi {
         Ok(())
     }
 
-    fn get_page_access(&self, gpa: u64) -> Result<u8, Error> {
+    fn get_page_access(&self, gpa: u64) -> Result<KVMiPageAccess, Error> {
         let mut access: c_uchar = 0;
         let res = (self.libkvmi.get_page_access)(self.dom, gpa, &mut access);
         if res != 0 {
             return Err(Error::last_os_error());
         }
-        Ok(access)
+        Ok(access.try_into().unwrap())
     }
 
-    fn set_page_access(&self, mut gpa: u64, mut access: u8) -> Result<(), Error> {
+    fn set_page_access(&self, mut gpa: u64, access: KVMiPageAccess) -> Result<(), Error> {
         let count: c_ushort = 1;
-        let res = (self.libkvmi.set_page_access)(self.dom, &mut gpa, &mut access, count);
+        let res = (self.libkvmi.set_page_access)(self.dom, &mut gpa, &mut (access as u8), count);
         if res != 0 {
             return Err(Error::last_os_error());
         }
@@ -411,7 +439,13 @@ impl KVMIntrospectable for KVMi {
                 KVMiInterceptType::Pagefault => KVMiEventType::Pagefault {
                     gpa: (*ev_ptr).event.__bindgen_anon_1.page_fault.gpa,
                     gva: (*ev_ptr).event.__bindgen_anon_1.page_fault.gva,
-                    access: (*ev_ptr).event.__bindgen_anon_1.page_fault.access,
+                    access: (*ev_ptr)
+                        .event
+                        .__bindgen_anon_1
+                        .page_fault
+                        .access
+                        .try_into()
+                        .unwrap(),
                     view: (*ev_ptr).event.__bindgen_anon_1.page_fault.view,
                 },
 
