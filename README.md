@@ -4,7 +4,7 @@
 [![Crates.io](https://img.shields.io/crates/v/kvmi.svg)](https://crates.io/crates/kvmi)
 [![docs](https://docs.rs/kvmi/badge.svg)](https://docs.rs/kvmi)
 
-> Safe Rust bindings to libkvmi
+> Safe Rust bindings for libkvmi
 
 ## Table of Contents
 
@@ -15,7 +15,7 @@
 
 ## Overview
 
-This crate will compile _safe_ Rust bindings for the VM introspection library [libkvmi](https://github.com/bitdefender/libkvmi)
+This crate will compile _safe_ Rust bindings for the VM introspection library [libkvmi](https://github.com/bitdefender/libkvmi) (_v6)
 
 ## Requirements
 
