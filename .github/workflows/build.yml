@@ -7,28 +7,37 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: install libkvmi
-      run: |
-        git clone https://github.com/KVM-VMI/kvm --branch kvmi --depth 1
-        cd kvm/tools/kvm/kvmi
-        make
-        sudo make install
-    - name: install stable toolchain with clippy
-      uses: actions-rs/toolchain@v1
-      with:
-        profile: minimal
-        toolchain: stable
-        components: clippy
-    - uses: actions/checkout@v1
-    - name: build KVMi
-      uses: actions-rs/cargo@v1
-      with:
-        command: build
-    - name: annotate commit with clippy warnings
-      uses: actions-rs/clippy-check@v1
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        args: -- -D warnings
+      - name: clone libkvmi
+        uses: actions/checkout@v2
+        with:
+          repository: bitdefender/libkvmi
+          path: libkvmi
+          ref: kvmi-v6
+
+      - name: build and install libkvmi
+        run: |
+          ./bootstrap
+          ./configure
+          make
+          sudo make install
+        working-directory: libkvmi
+
+      - name: install stable toolchain with clippy
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          components: clippy
+      - uses: actions/checkout@v1
+      - name: build KVMi
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+      - name: annotate commit with clippy warnings
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: -- -D warnings
 
   rustfmt:
     runs-on: ubuntu-latest
