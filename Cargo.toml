@@ -14,7 +14,7 @@ categories = ["api-bindings"]
 
 [dependencies]
 log = "0.4.8"
-kvmi-sys = "0.2.0"
+kvmi-sys = "0.2.1"
 enum-primitive-derive = "0.1.2"
 num-traits = "0.2.8"
 nix = "0.16.1"
