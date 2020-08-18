@@ -3,13 +3,13 @@
 extern crate log;
 mod libkvmi;
 use enum_primitive_derive::Primitive;
+pub use kvmi_sys::{kvm_dtable, kvm_msrs, kvm_regs, kvm_segment, kvm_sregs, kvmi_dom_event};
 use kvmi_sys::{
     kvm_msr_entry, kvmi_event_cr_reply, kvmi_event_msr_reply, kvmi_event_pf_reply,
     kvmi_event_reply, kvmi_introspector2qemu, kvmi_qemu2introspector, kvmi_vcpu_hdr,
     KVMI_EVENT_BREAKPOINT, KVMI_EVENT_CR, KVMI_EVENT_MSR, KVMI_EVENT_PAUSE_VCPU, KVMI_EVENT_PF,
     KVMI_PAGE_ACCESS_R, KVMI_PAGE_ACCESS_W, KVMI_PAGE_ACCESS_X,
 };
-pub use kvmi_sys::{kvm_msrs, kvm_regs, kvm_segment, kvm_sregs, kvmi_dom_event};
 use libc::free;
 use nix::errno::Errno;
 use num_traits::{FromPrimitive, ToPrimitive};
