@@ -167,8 +167,14 @@ pub struct KvmMsrs {
     internal_msrs: Box<kvm_msrs>,
 }
 
+impl Default for KvmMsrs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl KvmMsrs {
-    fn new() -> KvmMsrs {
+    pub fn new() -> KvmMsrs {
         let size = 6;
         let layout = Layout::from_size_align(
             2 * mem::size_of::<u32>() + size * mem::size_of::<kvm_msr_entry>(),
