@@ -163,6 +163,7 @@ unsafe extern "C" fn handshake_cb(
     0
 }
 
+#[derive(Default)]
 pub struct KvmMsrs {
     internal_msrs: Box<kvm_msrs>,
 }
