@@ -44,7 +44,7 @@ pub enum KVMiInterceptType {
     Pagefault = KVMI_EVENT_PF as isize,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(u8)]
 pub enum KVMiPageAccess {
     NIL = 0,
@@ -169,7 +169,7 @@ pub struct KvmMsrs {
 }
 
 impl KvmMsrs {
-    fn new() -> KvmMsrs {
+    pub fn new() -> KvmMsrs {
         let size = 6;
         let layout = Layout::from_size_align(
             2 * mem::size_of::<u32>() + size * mem::size_of::<kvm_msr_entry>(),
