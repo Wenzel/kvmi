@@ -292,15 +292,16 @@ impl KVMIntrospectable for KVMi {
 
         match socket_type {
             SocketType::UnixSocket(socket_path) => {
+                let socket_path = CString::new(socket_path).unwrap();
                 self.ctx = (self.libkvmi.init_unix_socket)(
-                    CString::new(socket_path).unwrap().as_ptr(),
+                    socket_path.as_ptr(),
                     accept_db,
                     hsk_cb,
                     cb_ctx,
-                )
+                );
             }
             SocketType::VSock(socket_port) => {
-                self.ctx = (self.libkvmi.init_vsock)(socket_port, accept_db, hsk_cb, cb_ctx)
+                self.ctx = (self.libkvmi.init_vsock)(socket_port, accept_db, hsk_cb, cb_ctx);
             }
         }
 
