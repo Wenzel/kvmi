@@ -290,20 +290,15 @@ impl KVMIntrospectable for KVMi {
             .lock()
             .expect("Failed to acquire connection mutex");
 
-        match socket_type {
+        self.ctx = match socket_type {
             SocketType::UnixSocket(socket_path) => {
                 let socket_path = CString::new(socket_path).unwrap();
-                self.ctx = (self.libkvmi.init_unix_socket)(
-                    socket_path.as_ptr(),
-                    accept_db,
-                    hsk_cb,
-                    cb_ctx,
-                );
+                (self.libkvmi.init_unix_socket)(socket_path.as_ptr(), accept_db, hsk_cb, cb_ctx)
             }
             SocketType::VSock(socket_port) => {
-                self.ctx = (self.libkvmi.init_vsock)(socket_port, accept_db, hsk_cb, cb_ctx);
+                (self.libkvmi.init_vsock)(socket_port, accept_db, hsk_cb, cb_ctx)
             }
-        }
+        };
 
         if !self.ctx.is_null() {
             debug!("Waiting for connection...");
