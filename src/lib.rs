@@ -126,6 +126,11 @@ pub enum KVMiMsrIndices {
     MsrLstar = 0xc0000082,
 }
 
+pub enum SocketType {
+    UnixSocket(String),
+    VSock(u32),
+}
+
 #[derive(Debug)]
 pub struct KVMiEvent {
     pub vcpu: u16,
@@ -216,7 +221,7 @@ impl KvmMsrs {
 }
 
 pub trait KVMIntrospectable: std::fmt::Debug {
-    fn init(&mut self, socket_path: &str) -> Result<(), Error>;
+    fn init(&mut self, socket_type: SocketType) -> Result<(), Error>;
     fn control_events(
         &self,
         vcpu: u16,
@@ -260,8 +265,7 @@ impl KVMi {
 }
 
 impl KVMIntrospectable for KVMi {
-    fn init(&mut self, socket_path: &str) -> Result<(), Error> {
-        let socket_path = CString::new(socket_path).unwrap();
+    fn init(&mut self, socket_type: SocketType) -> Result<(), Error> {
         let accept_db = Some(
             new_guest_cb
                 as unsafe extern "C" fn(*mut c_void, *mut [c_uchar; 16usize], *mut c_void) -> c_int,
@@ -285,7 +289,22 @@ impl KVMIntrospectable for KVMi {
             .guard
             .lock()
             .expect("Failed to acquire connection mutex");
-        self.ctx = (self.libkvmi.init_unix_socket)(socket_path.as_ptr(), accept_db, hsk_cb, cb_ctx);
+
+        match socket_type {
+            SocketType::UnixSocket(socket_path) => {
+                let socket_path = CString::new(socket_path).unwrap();
+                self.ctx = (self.libkvmi.init_unix_socket)(
+                    socket_path.as_ptr(),
+                    accept_db,
+                    hsk_cb,
+                    cb_ctx,
+                );
+            }
+            SocketType::VSock(socket_port) => {
+                self.ctx = (self.libkvmi.init_vsock)(socket_port, accept_db, hsk_cb, cb_ctx);
+            }
+        }
+
         if !self.ctx.is_null() {
             debug!("Waiting for connection...");
             while !*connected {
