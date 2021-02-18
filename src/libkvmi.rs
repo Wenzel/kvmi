@@ -62,6 +62,7 @@ type FnSetPageAccess = extern "C" fn(
     gpa: *mut c_ulonglong,
     access: *mut c_uchar,
     count: c_ushort,
+    view: c_ushort,
 ) -> c_int;
 
 // kvmi_get_registers
