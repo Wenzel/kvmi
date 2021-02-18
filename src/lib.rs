@@ -232,7 +232,6 @@ pub trait KVMIntrospectable: std::fmt::Debug {
     fn control_msr(&self, vcpu: u16, reg: u32, enabled: bool) -> Result<(), Error>;
     fn read_physical(&self, gpa: u64, buffer: &mut [u8]) -> Result<(), Error>;
     fn write_physical(&self, gpa: u64, buffer: &[u8]) -> Result<(), Error>;
-    fn get_page_access(&self, gpa: u64) -> Result<KVMiPageAccess, Error>;
     fn set_page_access(&self, gpa: u64, access: KVMiPageAccess) -> Result<(), Error>;
     fn pause(&self) -> Result<(), Error>;
     fn get_vcpu_count(&self) -> Result<u32, Error>;
@@ -361,15 +360,6 @@ impl KVMIntrospectable for KVMi {
             return Err(Error::last_os_error());
         }
         Ok(())
-    }
-
-    fn get_page_access(&self, gpa: u64) -> Result<KVMiPageAccess, Error> {
-        let mut access: c_uchar = 0;
-        let res = (self.libkvmi.get_page_access)(self.dom, gpa, &mut access);
-        if res != 0 {
-            return Err(Error::last_os_error());
-        }
-        Ok(access.try_into().unwrap())
     }
 
     fn set_page_access(&self, mut gpa: u64, access: KVMiPageAccess) -> Result<(), Error> {
