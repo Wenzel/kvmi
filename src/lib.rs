@@ -1,6 +1,7 @@
 #![allow(clippy::mutex_atomic)] // prevent fp with idiomatic condvar code
 #[macro_use]
 extern crate log;
+pub mod constants;
 pub mod errors;
 mod libkvmi;
 use enum_primitive_derive::Primitive;
@@ -27,6 +28,7 @@ use std::ptr::null_mut;
 use std::slice;
 use std::sync::{Condvar, Mutex};
 
+use constants::PAGE_SHIFT;
 use errors::KVMiError;
 use libkvmi::Libkvmi;
 
@@ -244,7 +246,10 @@ pub trait KVMIntrospectable: std::fmt::Debug {
     fn set_registers(&self, vcpu: u16, regs: &kvm_regs) -> Result<(), Error>;
     fn wait_and_pop_event(&self, ms: i32) -> Result<Option<KVMiEvent>, Error>;
     fn reply(&self, event: &KVMiEvent, reply_type: KVMiEventReply) -> Result<(), Error>;
+    /// Returns the highest Guest Frame Number
     fn get_maximum_gfn(&self) -> Result<u64, Error>;
+    /// Returns the highest physical address
+    fn get_maximum_paddr(&self) -> Result<u64, KVMiError>;
 }
 
 pub fn create_kvmi() -> KVMi {
@@ -636,6 +641,7 @@ impl KVMIntrospectable for KVMi {
         Ok(())
     }
 
+    /// Returns the highest Guest Frame Number
     fn get_maximum_gfn(&self) -> Result<u64, Error> {
         let mut max_gfn: u64 = 0;
         let res = (self.libkvmi.get_maximum_gfn)(self.dom, &mut max_gfn);
@@ -643,6 +649,12 @@ impl KVMIntrospectable for KVMi {
             return Err(Error::last_os_error());
         }
         Ok(max_gfn)
+    }
+
+    /// Returns the highest physical address
+    fn get_maximum_paddr(&self) -> Result<u64, KVMiError> {
+        let max_gfn = self.get_maximum_gfn()?;
+        Ok(max_gfn << PAGE_SHIFT)
     }
 }
 
