@@ -56,15 +56,13 @@ type FnReadPhysical =
 // kvmi_write_physical
 type FnWritePhysical =
     extern "C" fn(dom: *mut c_void, gpa: c_ulonglong, buffer: *const c_void, size: usize) -> c_int;
-//kvmi_get_page_access
-type FnGetPageAccess =
-    extern "C" fn(dom: *mut c_void, gpa: c_ulonglong, access: *mut c_uchar) -> c_int;
 //kvmi_set_page_access
 type FnSetPageAccess = extern "C" fn(
     dom: *mut c_void,
     gpa: *mut c_ulonglong,
     access: *mut c_uchar,
     count: c_ushort,
+    view: c_ushort,
 ) -> c_int;
 
 // kvmi_get_registers
@@ -116,7 +114,6 @@ pub struct Libkvmi {
     pub get_vcpu_count: RawSymbol<FnGetVCPUCount>,
     pub read_physical: RawSymbol<FnReadPhysical>,
     pub write_physical: RawSymbol<FnWritePhysical>,
-    pub get_page_access: RawSymbol<FnGetPageAccess>,
     pub set_page_access: RawSymbol<FnSetPageAccess>,
     pub get_registers: RawSymbol<FnGetRegisters>,
     pub set_registers: RawSymbol<FnSetRegisters>,
@@ -185,10 +182,6 @@ impl Libkvmi {
             lib.get(b"kvmi_write_physical\0").unwrap();
         let write_physical = write_physical_sym.into_raw();
 
-        let get_page_access_sym: Symbol<FnGetPageAccess> =
-            lib.get(b"kvmi_get_page_access\0").unwrap();
-        let get_page_access = get_page_access_sym.into_raw();
-
         let set_page_access_sym: Symbol<FnSetPageAccess> =
             lib.get(b"kvmi_set_page_access\0").unwrap();
         let set_page_access = set_page_access_sym.into_raw();
@@ -233,7 +226,6 @@ impl Libkvmi {
             get_vcpu_count,
             read_physical,
             write_physical,
-            get_page_access,
             set_page_access,
             get_registers,
             set_registers,
