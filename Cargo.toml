@@ -22,3 +22,8 @@ libc = "0.2.66"
 libloading = "0.6.1"
 mockall = "0.7.1"
 
+[package.metadata.release]
+# releases are managed by cargo release, but publication is done on the CI
+# this metadata prevents a misuse when --skip-publish flag is missing from cargo
+# release command line
+disable-publish = true
