@@ -1,6 +1,8 @@
 # IDE
 /.idea
+*.iml
 
 /target
 **/*.rs.bk
 Cargo.lock
+
