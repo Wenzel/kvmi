@@ -1,9 +1,11 @@
-name: Build
+name: CI
 
 on:
   push:
     branches:
       - master
+    tags:
+      - '*'
   pull_request:
 
 jobs:
@@ -43,7 +45,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: -- -D warnings
 
-  rustfmt:
+  format:
     runs-on: ubuntu-latest
 
     steps:
@@ -59,3 +61,41 @@ jobs:
       with:
         command: fmt
         args: -- --check
+
+  publish:
+    needs: [format, build]
+    runs-on: ubuntu-20.04
+
+    # publish on crates.io
+    # only if push on master, and tag is 'v*'
+    # this should be triggered by cargo release, which creates a new tag and pushes to the repo
+    # cargo release --no-dev-version --skip-publish minor
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: clone libkvmi
+        uses: actions/checkout@v2
+        with:
+          repository: bitdefender/libkvmi
+          path: libkvmi
+          ref: kvmi-v6
+
+      - name: build and install libkvmi
+        run: |
+          ./bootstrap
+          ./configure
+          make
+          sudo make install
+        working-directory: libkvmi
+
+      - uses: actions/checkout@v1
+
+      - name: install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+
+      - name: Publish
+        shell: bash
+        run: |
+          cargo publish --token ${{ secrets.CRATES_TOKEN }}
