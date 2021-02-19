@@ -1,6 +1,6 @@
 [package]
 name = "kvmi"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["Mathieu Tarral <mathieu.tarral@protonmail.com>"]
 edition = "2018"
 description = "Safe Rust bindings for libkvmi (v6)"
