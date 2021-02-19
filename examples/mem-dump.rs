@@ -49,9 +49,6 @@ fn main() {
     let unix_socket = matches
         .value_of("unix_socket")
         .map(|s| SocketType::UnixSocket(s.to_string()));
-    if unix_socket.is_none() {
-        println!("empty unix socket !");
-    }
     let vsock_socket = matches.value_of("vsock_port").map(|s| {
         SocketType::VSock(s.parse::<u32>().expect(&*format!(
             "Failed to convert command line value \"{}\" to vSock port integer",
