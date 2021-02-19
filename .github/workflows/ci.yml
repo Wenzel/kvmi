@@ -54,18 +54,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: install stable toolchain with rustfmt
-      uses: actions-rs/toolchain@v1
-      with:
-        profile: minimal
-        toolchain: stable
-        components: rustfmt
-    - uses: actions/checkout@v1
-    - name: rustfmt check
-      uses: actions-rs/cargo@v1
-      with:
-        command: fmt
-        args: -- --check
+      - uses: actions/checkout@v1
+
+      - name: rustfmt check
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: -- --check
 
   debian_package:
     # create a Debian package with cargo deb to distribute the examples
