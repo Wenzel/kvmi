@@ -44,12 +44,7 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: build KVMi
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-
-      - name: annotate commit with clippy warnings
+      - name: build and check for clippy warnings
         uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
