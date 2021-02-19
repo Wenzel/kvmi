@@ -33,3 +33,11 @@ indicatif = "0.15.0"
 # this metadata prevents a misuse when --skip-publish flag is missing from cargo
 # release command line
 disable-publish = true
+
+[package.metadata.deb]
+extended-description = "A collection of utilities to perform virtual machine introspection with libkvmi on KVM"
+section = "utility"
+priority = "optional"
+assets = [
+    ["target/release/examples/mem-dump", "usr/bin/kvmi-mem-dump", "755"],
+]

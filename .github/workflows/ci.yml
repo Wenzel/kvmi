@@ -72,6 +72,58 @@ jobs:
         command: fmt
         args: -- --check
 
+  debian_package:
+    # create a Debian package with cargo deb to distribute the examples
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v1
+
+      - name: install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+
+      - name: clone libkvmi
+        uses: actions/checkout@v2
+        with:
+          repository: bitdefender/libkvmi
+          path: libkvmi
+          ref: bf5776319e1801b59125c994c459446f0ed6837e
+
+      - name: build and install libkvmi
+        run: |
+          ./bootstrap
+          ./configure
+          make
+          sudo make install
+        working-directory: libkvmi
+
+      - name: install cargo deb dependencies
+        run: sudo apt-get install -y dpkg liblzma-dev
+
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo
+
+      - name: install cargo deb
+        run: cargo install cargo-deb
+
+      - name: build debian package
+        run: cargo deb -- --examples
+
+      - name: upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: kvmi_deb
+          # kvmi_x.x.x_amd64.deb
+          path: target/debian/*
+
   publish:
     needs: [format, build]
     runs-on: ubuntu-20.04
