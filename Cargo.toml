@@ -36,6 +36,8 @@ disable-publish = true
 
 [package.metadata.deb]
 extended-description = "A collection of utilities to perform virtual machine introspection with libkvmi on KVM"
+# force any libc6, otherwise the one from the CI is pinned and is too recent
+depends = "libc6"
 section = "utility"
 priority = "optional"
 assets = [
