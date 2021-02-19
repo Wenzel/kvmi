@@ -1,6 +1,8 @@
 #![allow(clippy::mutex_atomic)] // prevent fp with idiomatic condvar code
 #[macro_use]
 extern crate log;
+pub mod constants;
+pub mod errors;
 mod libkvmi;
 use enum_primitive_derive::Primitive;
 pub use kvmi_sys::{kvm_dtable, kvm_msrs, kvm_regs, kvm_segment, kvm_sregs, kvmi_dom_event};
@@ -26,6 +28,8 @@ use std::ptr::null_mut;
 use std::slice;
 use std::sync::{Condvar, Mutex};
 
+use constants::PAGE_SHIFT;
+use errors::KVMiError;
 use libkvmi::Libkvmi;
 
 #[derive(Debug)]
@@ -233,13 +237,19 @@ pub trait KVMIntrospectable: std::fmt::Debug {
     fn read_physical(&self, gpa: u64, buffer: &mut [u8]) -> Result<(), Error>;
     fn write_physical(&self, gpa: u64, buffer: &[u8]) -> Result<(), Error>;
     fn set_page_access(&self, gpa: u64, access: KVMiPageAccess, view: u16) -> Result<(), Error>;
+    /// Resumes the VM
     fn pause(&self) -> Result<(), Error>;
+    /// Pauses the VM
+    fn resume(&mut self) -> Result<(), KVMiError>;
     fn get_vcpu_count(&self) -> Result<u32, Error>;
     fn get_registers(&self, vcpu: u16) -> Result<(kvm_regs, kvm_sregs, KvmMsrs), Error>;
     fn set_registers(&self, vcpu: u16, regs: &kvm_regs) -> Result<(), Error>;
     fn wait_and_pop_event(&self, ms: i32) -> Result<Option<KVMiEvent>, Error>;
     fn reply(&self, event: &KVMiEvent, reply_type: KVMiEventReply) -> Result<(), Error>;
+    /// Returns the highest Guest Frame Number
     fn get_maximum_gfn(&self) -> Result<u64, Error>;
+    /// Returns the highest physical address
+    fn get_maximum_paddr(&self) -> Result<u64, KVMiError>;
 }
 
 pub fn create_kvmi() -> KVMi {
@@ -251,6 +261,9 @@ pub struct KVMi {
     ctx: *mut c_void,
     dom: *mut c_void,
     libkvmi: Libkvmi,
+    // amount of pause events that we expect to receive since the last pause
+    // each VCPU needs to send a pause event and be acknowledged
+    expect_pause_ev: u32,
 }
 
 impl KVMi {
@@ -259,6 +272,7 @@ impl KVMi {
             ctx: null_mut(),
             dom: null_mut(),
             libkvmi,
+            expect_pause_ev: 0,
         }
     }
 }
@@ -377,11 +391,36 @@ impl KVMIntrospectable for KVMi {
         Ok(())
     }
 
+    /// Pauses the VM
     fn pause(&self) -> Result<(), Error> {
         let vcpu_count = self.get_vcpu_count()?;
         let res = (self.libkvmi.pause_all_vcpus)(self.dom, vcpu_count);
         if res != 0 {
             return Err(Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    /// Resumes the VM
+    fn resume(&mut self) -> Result<(), KVMiError> {
+        // already resumed ?
+        if self.expect_pause_ev == 0 {
+            return Ok(());
+        }
+
+        while self.expect_pause_ev > 0 {
+            // wait
+            let kvmi_event = self
+                .wait_and_pop_event(1000)?
+                .ok_or(KVMiError::NoPauseEventAvailable)?;
+            match kvmi_event.ev_type {
+                KVMiEventType::PauseVCPU => {
+                    debug!("VCPU {} - Received Pause Event", kvmi_event.vcpu);
+                    self.expect_pause_ev -= 1;
+                    self.reply(&kvmi_event, KVMiEventReply::Continue)?;
+                }
+                _ => return Err(KVMiError::UnexpectedEventWhileResuming(kvmi_event.ev_type)),
+            }
         }
         Ok(())
     }
@@ -602,6 +641,7 @@ impl KVMIntrospectable for KVMi {
         Ok(())
     }
 
+    /// Returns the highest Guest Frame Number
     fn get_maximum_gfn(&self) -> Result<u64, Error> {
         let mut max_gfn: u64 = 0;
         let res = (self.libkvmi.get_maximum_gfn)(self.dom, &mut max_gfn);
@@ -609,6 +649,12 @@ impl KVMIntrospectable for KVMi {
             return Err(Error::last_os_error());
         }
         Ok(max_gfn)
+    }
+
+    /// Returns the highest physical address
+    fn get_maximum_paddr(&self) -> Result<u64, KVMiError> {
+        let max_gfn = self.get_maximum_gfn()?;
+        Ok(max_gfn << PAGE_SHIFT)
     }
 }
 
