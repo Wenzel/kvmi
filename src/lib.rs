@@ -252,8 +252,8 @@ pub trait KVMIntrospectable: std::fmt::Debug {
     fn get_maximum_paddr(&self) -> Result<u64, KVMiError>;
 }
 
-pub fn create_kvmi() -> KVMi {
-    KVMi::new(unsafe { Libkvmi::new() })
+pub fn create_kvmi() -> Result<KVMi, Box<dyn std::error::Error>> {
+    Ok(KVMi::new(unsafe { Libkvmi::new()? }))
 }
 
 #[derive(Debug)]

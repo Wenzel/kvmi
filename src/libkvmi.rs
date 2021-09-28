@@ -5,7 +5,7 @@ use kvmi_sys::{
     kvmi_new_guest_cb, kvmi_timeout_t,
 };
 use libloading::os::unix::Symbol as RawSymbol;
-use libloading::{Library, Symbol};
+use libloading::{Error, Library, Symbol};
 
 const LIBKVMI_FILENAME: &str = "libkvmi.so";
 // libkvmi function definitions type aliases
@@ -125,90 +125,84 @@ pub struct Libkvmi {
 }
 
 impl Libkvmi {
-    pub unsafe fn new() -> Self {
+    pub unsafe fn new() -> Result<Self, Error> {
         info!("Loading {}", LIBKVMI_FILENAME);
-        let lib = Library::new(LIBKVMI_FILENAME).unwrap();
+        let lib = Library::new(LIBKVMI_FILENAME)?;
         // load symbols
-        let init_vsock_sym: Symbol<FnInitVSock> = lib.get(b"kvmi_init_vsock\0").unwrap();
+        let init_vsock_sym: Symbol<FnInitVSock> = lib.get(b"kvmi_init_vsock\0")?;
         let init_vsock = init_vsock_sym.into_raw();
 
-        let init_unix_socket_sym: Symbol<FnInitUnixSocket> =
-            lib.get(b"kvmi_init_unix_socket\0").unwrap();
+        let init_unix_socket_sym: Symbol<FnInitUnixSocket> = lib.get(b"kvmi_init_unix_socket\0")?;
         let init_unix_socket = init_unix_socket_sym.into_raw();
 
-        let uninit_sym: Symbol<FnUninit> = lib.get(b"kvmi_uninit\0").unwrap();
+        let uninit_sym: Symbol<FnUninit> = lib.get(b"kvmi_uninit\0")?;
         let uninit = uninit_sym.into_raw();
 
-        let close_sym: Symbol<FnClose> = lib.get(b"kvmi_close\0").unwrap();
+        let close_sym: Symbol<FnClose> = lib.get(b"kvmi_close\0")?;
         let close = close_sym.into_raw();
 
-        let domain_close_sym: Symbol<FnDomainClose> = lib.get(b"kvmi_close\0").unwrap();
+        let domain_close_sym: Symbol<FnDomainClose> = lib.get(b"kvmi_close\0")?;
         let domain_close = domain_close_sym.into_raw();
 
         let domain_is_connected_sym: Symbol<FnDomainIsConnected> =
-            lib.get(b"kvmi_domain_is_connected\0").unwrap();
+            lib.get(b"kvmi_domain_is_connected\0")?;
         let domain_is_connected = domain_is_connected_sym.into_raw();
 
-        let domain_name_sym: Symbol<FnDomainName> = lib.get(b"kvmi_domain_name\0").unwrap();
+        let domain_name_sym: Symbol<FnDomainName> = lib.get(b"kvmi_domain_name\0")?;
         let domain_name = domain_name_sym.into_raw();
 
-        let connection_fd_sym: Symbol<FnConnectionFd> = lib.get(b"kvmi_connection_fd\0").unwrap();
+        let connection_fd_sym: Symbol<FnConnectionFd> = lib.get(b"kvmi_connection_fd\0")?;
         let connection_fd = connection_fd_sym.into_raw();
 
-        let get_version_sym: Symbol<FnGetVersion> = lib.get(b"kvmi_get_version\0").unwrap();
+        let get_version_sym: Symbol<FnGetVersion> = lib.get(b"kvmi_get_version\0")?;
         let get_version = get_version_sym.into_raw();
 
-        let control_events_sym: Symbol<FnControlEvents> =
-            lib.get(b"kvmi_control_events\0").unwrap();
+        let control_events_sym: Symbol<FnControlEvents> = lib.get(b"kvmi_control_events\0")?;
         let control_events = control_events_sym.into_raw();
 
-        let control_cr_sym: Symbol<FnControlCr> = lib.get(b"kvmi_control_cr\0").unwrap();
+        let control_cr_sym: Symbol<FnControlCr> = lib.get(b"kvmi_control_cr\0")?;
         let control_cr = control_cr_sym.into_raw();
 
-        let control_msr_sym: Symbol<FnControlMsr> = lib.get(b"kvmi_control_msr\0").unwrap();
+        let control_msr_sym: Symbol<FnControlMsr> = lib.get(b"kvmi_control_msr\0")?;
         let control_msr = control_msr_sym.into_raw();
 
-        let pause_all_vcpus_sym: Symbol<FnPauseAllVCPUs> =
-            lib.get(b"kvmi_pause_all_vcpus\0").unwrap();
+        let pause_all_vcpus_sym: Symbol<FnPauseAllVCPUs> = lib.get(b"kvmi_pause_all_vcpus\0")?;
         let pause_all_vcpus = pause_all_vcpus_sym.into_raw();
 
-        let get_vcpu_count_sym: Symbol<FnGetVCPUCount> = lib.get(b"kvmi_get_vcpu_count\0").unwrap();
+        let get_vcpu_count_sym: Symbol<FnGetVCPUCount> = lib.get(b"kvmi_get_vcpu_count\0")?;
         let get_vcpu_count = get_vcpu_count_sym.into_raw();
 
-        let read_physical_sym: Symbol<FnReadPhysical> = lib.get(b"kvmi_read_physical\0").unwrap();
+        let read_physical_sym: Symbol<FnReadPhysical> = lib.get(b"kvmi_read_physical\0")?;
         let read_physical = read_physical_sym.into_raw();
 
-        let write_physical_sym: Symbol<FnWritePhysical> =
-            lib.get(b"kvmi_write_physical\0").unwrap();
+        let write_physical_sym: Symbol<FnWritePhysical> = lib.get(b"kvmi_write_physical\0")?;
         let write_physical = write_physical_sym.into_raw();
 
-        let set_page_access_sym: Symbol<FnSetPageAccess> =
-            lib.get(b"kvmi_set_page_access\0").unwrap();
+        let set_page_access_sym: Symbol<FnSetPageAccess> = lib.get(b"kvmi_set_page_access\0")?;
         let set_page_access = set_page_access_sym.into_raw();
 
-        let get_registers_sym: Symbol<FnGetRegisters> = lib.get(b"kvmi_get_registers\0").unwrap();
+        let get_registers_sym: Symbol<FnGetRegisters> = lib.get(b"kvmi_get_registers\0")?;
         let get_registers = get_registers_sym.into_raw();
 
-        let set_registers_sym: Symbol<FnSetRegisters> = lib.get(b"kvmi_set_registers\0").unwrap();
+        let set_registers_sym: Symbol<FnSetRegisters> = lib.get(b"kvmi_set_registers\0")?;
         let set_registers = set_registers_sym.into_raw();
 
-        let reply_event_sym: Symbol<FnReplyEvent> = lib.get(b"kvmi_reply_event\0").unwrap();
+        let reply_event_sym: Symbol<FnReplyEvent> = lib.get(b"kvmi_reply_event\0")?;
         let reply_event = reply_event_sym.into_raw();
 
-        let pop_event_sym: Symbol<FnPopEvent> = lib.get(b"kvmi_pop_event\0").unwrap();
+        let pop_event_sym: Symbol<FnPopEvent> = lib.get(b"kvmi_pop_event\0")?;
         let pop_event = pop_event_sym.into_raw();
 
-        let wait_event_sym: Symbol<FnWaitEvent> = lib.get(b"kvmi_wait_event\0").unwrap();
+        let wait_event_sym: Symbol<FnWaitEvent> = lib.get(b"kvmi_wait_event\0")?;
         let wait_event = wait_event_sym.into_raw();
 
-        let set_log_cb_sym: Symbol<FnSetLogCb> = lib.get(b"kvmi_set_log_cb\0").unwrap();
+        let set_log_cb_sym: Symbol<FnSetLogCb> = lib.get(b"kvmi_set_log_cb\0")?;
         let set_log_cb = set_log_cb_sym.into_raw();
 
-        let get_maximum_gfn_sym: Symbol<FnGetMaximumGFN> =
-            lib.get(b"kvmi_get_maximum_gfn\0").unwrap();
+        let get_maximum_gfn_sym: Symbol<FnGetMaximumGFN> = lib.get(b"kvmi_get_maximum_gfn\0")?;
         let get_maximum_gfn = get_maximum_gfn_sym.into_raw();
 
-        Libkvmi {
+        Ok(Libkvmi {
             lib,
             init_vsock,
             init_unix_socket,
@@ -234,6 +228,6 @@ impl Libkvmi {
             wait_event,
             set_log_cb,
             get_maximum_gfn,
-        }
+        })
     }
 }
