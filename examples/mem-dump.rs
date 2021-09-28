@@ -8,6 +8,7 @@ use kvmi::{create_kvmi, KVMIntrospectable, SocketType};
 use clap::{App, Arg, ArgMatches};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, trace};
+use std::error::Error;
 
 fn parse_args() -> ArgMatches<'static> {
     App::new(file!())
@@ -36,7 +37,7 @@ fn parse_args() -> ArgMatches<'static> {
         .get_matches()
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
 
     // handle args
@@ -70,7 +71,7 @@ fn main() {
     dump_path.canonicalize().unwrap();
 
     // create KVMi and init
-    let mut kvmi = create_kvmi();
+    let mut kvmi = create_kvmi()?;
 
     let spinner = ProgressBar::new_spinner();
     spinner.enable_steady_tick(200);
@@ -125,4 +126,5 @@ fn main() {
 
     println!("Resuming the VM");
     kvmi.resume().expect("Failed to resume VM");
+    Ok(())
 }
