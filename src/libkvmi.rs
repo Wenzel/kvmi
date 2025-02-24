@@ -97,15 +97,22 @@ type FnGetMaximumGFN = extern "C" fn(dom: *mut c_void, gfn: *mut c_ulonglong) ->
 
 #[derive(Debug)]
 pub struct Libkvmi {
+    #[allow(dead_code)]
     lib: Library,
     pub init_vsock: RawSymbol<FnInitVSock>,
     pub init_unix_socket: RawSymbol<FnInitUnixSocket>,
     pub uninit: RawSymbol<FnUninit>,
+    #[allow(dead_code)]
     pub close: RawSymbol<FnClose>,
+    #[allow(dead_code)]
     pub domain_close: RawSymbol<FnDomainClose>,
+    #[allow(dead_code)]
     pub domain_is_connected: RawSymbol<FnDomainIsConnected>,
+    #[allow(dead_code)]
     pub domain_name: RawSymbol<FnDomainName>,
+    #[allow(dead_code)]
     pub connection_fd: RawSymbol<FnConnectionFd>,
+    #[allow(dead_code)]
     pub get_version: RawSymbol<FnGetVersion>,
     pub control_events: RawSymbol<FnControlEvents>,
     pub control_cr: RawSymbol<FnControlCr>,
@@ -120,6 +127,7 @@ pub struct Libkvmi {
     pub reply_event: RawSymbol<FnReplyEvent>,
     pub pop_event: RawSymbol<FnPopEvent>,
     pub wait_event: RawSymbol<FnWaitEvent>,
+    #[allow(dead_code)]
     pub set_log_cb: RawSymbol<FnSetLogCb>,
     pub get_maximum_gfn: RawSymbol<FnGetMaximumGFN>,
 }
