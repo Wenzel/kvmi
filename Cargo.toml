@@ -32,7 +32,7 @@ indicatif = "0.15.0"
 # releases are managed by cargo release, but publication is done on the CI
 # this metadata prevents a misuse when --skip-publish flag is missing from cargo
 # release command line
-disable-publish = true
+publish = false
 
 [package.metadata.deb]
 extended-description = "A collection of utilities to perform virtual machine introspection with libkvmi on KVM"
