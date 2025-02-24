@@ -125,9 +125,9 @@ pub enum KVMiMsrIndices {
     SysenterCs = 0x174,
     SysenterEsp = 0x175,
     SysenterEip = 0x176,
-    MsrEfer = 0xc0000080,
-    MsrStar = 0xc0000081,
-    MsrLstar = 0xc0000082,
+    MsrEfer = 0xc0000080u32,
+    MsrStar = 0xc0000081u32,
+    MsrLstar = 0xc0000082u32,
 }
 
 pub enum SocketType {
@@ -191,7 +191,7 @@ impl KvmMsrs {
         let mut msrs = KvmMsrs {
             internal_msrs: unsafe { Box::from_raw(internal_msrs) },
         };
-        let mut msrs_as_slice = msrs.as_slice_mut();
+        let msrs_as_slice = msrs.as_slice_mut();
         msrs_as_slice[0].index = KVMiMsrIndices::SysenterCs as u32;
         msrs_as_slice[1].index = KVMiMsrIndices::SysenterEsp as u32;
         msrs_as_slice[2].index = KVMiMsrIndices::SysenterEip as u32;
@@ -479,7 +479,7 @@ impl KVMIntrospectable for KVMi {
             return Err(Error::last_os_error());
         }
         let ev_type = unsafe {
-            let ev_u8 = (*ev_ptr).event.common.event.try_into().unwrap();
+            let ev_u8 = (*ev_ptr).event.common.event.into();
             match KVMiInterceptType::from_u32(ev_u8).unwrap() {
                 KVMiInterceptType::PauseVCPU => KVMiEventType::PauseVCPU,
                 KVMiInterceptType::Breakpoint => KVMiEventType::Breakpoint {
@@ -500,10 +500,8 @@ impl KVMIntrospectable for KVMi {
                 },
 
                 KVMiInterceptType::Cr => KVMiEventType::Cr {
-                    cr_type: KVMiCr::from_i32(
-                        (*ev_ptr).event.__bindgen_anon_1.cr.cr.try_into().unwrap(),
-                    )
-                    .unwrap(),
+                    cr_type: KVMiCr::from_i32((*ev_ptr).event.__bindgen_anon_1.cr.cr.into())
+                        .unwrap(),
                     new: (*ev_ptr).event.__bindgen_anon_1.cr.new_value,
                     old: (*ev_ptr).event.__bindgen_anon_1.cr.old_value,
                 },
@@ -556,7 +554,7 @@ impl KVMIntrospectable for KVMi {
             KVMiEventType::PauseVCPU => {
                 let size = mem::size_of::<EventReplyCommon>();
                 let rpl_ptr: *const c_void = &reply_common as *const _ as *const c_void;
-                (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size as usize)
+                (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size)
             }
             KVMiEventType::Breakpoint {
                 gpa: _,
@@ -564,7 +562,7 @@ impl KVMIntrospectable for KVMi {
             } => {
                 let size = mem::size_of::<EventReplyCommon>();
                 let rpl_ptr: *const c_void = &reply_common as *const _ as *const c_void;
-                (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size as usize)
+                (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size)
             }
             KVMiEventType::Pagefault {
                 gpa: _,
@@ -589,7 +587,7 @@ impl KVMIntrospectable for KVMi {
                 reply.pf.ctx_data = [0; 256];
                 let size = mem::size_of::<EventReplyPagefault>();
                 let rpl_ptr: *const c_void = &reply as *const _ as *const c_void;
-                (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size as usize)
+                (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size)
             }
             KVMiEventType::Cr {
                 cr_type: _,
@@ -609,7 +607,7 @@ impl KVMIntrospectable for KVMi {
                 reply.cr.new_val = new;
                 let size = mem::size_of::<EventReplyCr>();
                 let rpl_ptr: *const c_void = &reply as *const _ as *const c_void;
-                (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size as usize)
+                (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size)
             }
 
             KVMiEventType::Msr {
@@ -631,7 +629,7 @@ impl KVMIntrospectable for KVMi {
                 reply.msr.new_val = new;
                 let size = mem::size_of::<EventReplyMsr>();
                 let rpl_ptr: *const c_void = &reply as *const _ as *const c_void;
-                (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size as usize)
+                (self.libkvmi.reply_event)(self.dom, seq, rpl_ptr, size)
             }
         };
 
