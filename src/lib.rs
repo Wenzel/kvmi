@@ -208,7 +208,8 @@ impl KvmMsrs {
     pub fn as_slice_mut(&mut self) -> &mut [kvm_msr_entry] {
         unsafe {
             slice::from_raw_parts_mut(
-                self.internal_msrs.entries.as_mut_ptr() as *mut _,
+                // entries[] follows the header; its bindgen field path varies by kernel headers
+                (self.get_internal_msrs_mut()).add(1) as *mut _,
                 self.internal_msrs.nmsrs.try_into().unwrap(),
             )
         }
@@ -217,7 +218,7 @@ impl KvmMsrs {
     pub fn as_slice(&self) -> &[kvm_msr_entry] {
         unsafe {
             slice::from_raw_parts(
-                self.internal_msrs.entries.as_ptr() as *mut _,
+                (self.internal_msrs.as_ref() as *const kvm_msrs).add(1) as *const _,
                 self.internal_msrs.nmsrs.try_into().unwrap(),
             )
         }
